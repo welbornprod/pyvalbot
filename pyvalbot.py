@@ -9,11 +9,9 @@
 
 
 # System/General stuff
-import functools
 from datetime import datetime
 import os.path
 import sys
-import time
 
 
 #from datetime import datetime
@@ -51,22 +49,6 @@ USAGESTR = """{versionstr}
 """.format(versionstr=VERSIONSTR, script=SCRIPT)
 
 
-def delayed_func(func):
-    """ Decorator to delay execution of a function the old school way.
-        Example:
-            @delayed_function(timeout=5)
-            def myfunc():
-                print('it has been 5 seconds.')
-
-            x = delayed_function(lambda x: x * 5)(5)
-            # returns 25 after 2 seconds.
-    """
-    def inner(*args, **kwargs):
-        time.sleep(2)
-        return func(*args, **kwargs)
-    return inner
-
-
 class MyFirstIRCProtocol(irc.IRCClient):
  
     def __init__(self):
@@ -83,6 +65,7 @@ class MyFirstIRCProtocol(irc.IRCClient):
         # Give admin access to certain functions.
         self.admin.quit = self.quit
         self.admin.sendLine = self.sendLine
+        self.admin.handlinglock = defer.DeferredLock()
         # IRCClient must hold a nickname attribute.
         self.nickname = self.admin.nickname
 
@@ -129,31 +112,38 @@ class MyFirstIRCProtocol(irc.IRCClient):
     def privmsg(self, user, channel, message):
         nick, _, host = user.partition('!')
         message = message.strip()
+        is_admin = (nick in self.admin.admins)
 
         if (channel == self.admin.nickname) and (nick.lower() == 'nickserv'):
             print('NickServ: {}'.format(message))
-        
+
         # Disallow banned nicks.
         if nick in self.admin.banned:
-            return
+            return None
+        # Disallow backup of requests. If handlingcount is too much
+        # just ignore this one.
+        if self.admin.handlingcount > 2:
+            return None
 
         # rate-limit responses, handle auto-bans.
         ban_msg = None
-        if self.admin.last_respond and self.admin.last_nick:
-            respondtime = (datetime.now() - self.admin.last_respond)
+        if self.admin.last_handle and self.admin.last_nick:
+            # save seconds since last response.
+            respondtime = (datetime.now() - self.admin.last_handle)
             respondsecs = respondtime.total_seconds()
+            # If this user has been ban warned, check their last response time.
             if nick in self.admin.banned_warned.keys():
                 lasttime = self.admin.banned_warned[nick]['last']
                 usersecs = (datetime.now() - lasttime).total_seconds()
                 if usersecs < 4:
-                    if self.admin.add_ban(nick):
+                    if self.admin.ban_add(nick):
                         ban_msg = 'no more.'
                     else:
                         ban_msg = 'slow down.'
 
             elif (nick == self.admin.last_nick) and (respondsecs < 3):
                 # first time offender
-                self.admin.add_ban(nick)
+                self.admin.ban_add(nick)
 
         if ban_msg:
             # Send ban msg instead of usual command response.
@@ -163,7 +153,7 @@ class MyFirstIRCProtocol(irc.IRCClient):
 
             # Ignore this if we just processed the same command.
             if message == self.admin.last_command:
-                if nick in self.admin.admins:
+                if is_admin:
                     print('Would\'ve ignored cmd: {}, '.format(message) +
                           'last: {}'.format(self.admin.last_command))
                 else:
@@ -174,9 +164,6 @@ class MyFirstIRCProtocol(irc.IRCClient):
             # Handle message parsing and commands.
             # If the message triggers a command, then a function is returned to
             # handle it. If there is no function returned, then just return.
-            print('Parsing message: ({}) {}: {}'.format(channel,
-                                                        nick,
-                                                        message))
             func = self.commandhandler.parse_data(user, channel, message)
             
             # Nothing returned from commandhandler, no response is needed.
@@ -189,12 +176,17 @@ class MyFirstIRCProtocol(irc.IRCClient):
             self.admin.last_command = message
             d = defer.maybeDeferred(func, rest.strip(), nick=nick)
 
-        # Add callbacks to deal with whatever the command results are.
-        # If the command gives error, the _show_error callback will turn the
+        if self.admin.limit_rate:
+            # Keep track of how many requests are unanswered (handling).
+            self.admin.handlinglock.acquire()
+            self.admin.handlingcount += 1
+            self.admin.handlinglock.release()
+            print('Request Count: {}'.format(self.admin.handlingcount))
+        # Add error callbackfor func, the _show_error callback will turn the
         # error into a terse message first:
         d.addErrback(self._showError)
         # Pick args for _sendMessage based on where the message came from.
-        # This will fire off _sendMessage
+        # This will fire off our send function
         if channel == self.admin.nickname:
             # Send private response.
             d.addCallback(self._sendMessage, nick)
@@ -202,23 +194,42 @@ class MyFirstIRCProtocol(irc.IRCClient):
             # Send channel response.
             d.addCallback(self._sendMessage, channel, nick)
 
-        # Save the last response time for next time.
-        self.last_respond = datetime.now()
-        self.last_nick = nick
+        # Save the last command-handled time for next time.
+        self.admin.last_handle = datetime.now()
+        self.admin.last_nick = nick
 
-    def _sendMessage(self, msg, target, nick=None):
+    def _handleMessage(self, msg, target, nick=None):
+        """ Actually send the message, decrease the handling count. """
         if msg:
             if nick:
                 msg = '{}, {}'.format(nick, msg)
             self.msg(target, msg)
+            if self.admin.handlingcount > 0:
+                self.admin.handlinglock.acquire()
+                self.admin.handlingcount -= 1
+                self.admin.handlinglock.release()
 
-    @delayed_func
-    def _sendMessageDelayed(self, msg, target, nick=None):
-        """ Same as _sendMessage, but with automatic delayed response. """
-        if msg:
-            if nick:
-                msg = '{}, {}'.format(nick, msg)
-        self.msg(target, msg)
+    def _sendMessage(self, msg, target, nick=None):
+        if self.admin.handlingcount > 1:
+            # Calculate delay needed based on current handling count.
+            # Ends up being around 2 seconds per response.
+            # Schedule message handling for later.
+            timeout = 2 * self.admin.handlingcount
+            print('Delaying msg response for later: {}'.format(timeout))
+            reactor.callLater(timeout,
+                              self._handleMessage,
+                              msg,
+                              target,
+                              nick)
+        else:
+            # Handle response right away-ish.
+            # (give twisted a split-second to do other things like
+            #  increase the self.admin.handlingcount if needed)
+            reactor.callLater(0.25,
+                              self._handleMessage,
+                              msg,
+                              target,
+                              nick)
 
     def _showError(self, failure):
         return failure.getErrorMessage()
@@ -236,35 +247,6 @@ class MyFirstIRCProtocol(irc.IRCClient):
                 print('Key not found in self.argd!: {}'.format(argname))
         return defaultval
     
-    def parse_adminfunc(self, funcinfo):
-        """ Parses function info dict provided by some admin_ commands. """
-
-        # Get function name.
-        if 'funcname' in funcinfo.keys():
-            funcname = funcinfo['funcname']
-        else:
-            print('Admin wrong dict format for function: '
-                  '{}'.format(repr(funcinfo)))
-            return None
-
-        # Get actual function
-        if hasattr(self, funcname):
-            funcobj = getattr(self, funcname)
-        else:
-            print('Admin, can\'t find a function called: {}'.format(funcname))
-            return None
-        # Get provided args/kwargs from funcinfo.
-        funcargs = funcinfo.get('args', None)
-        funckwargs = funcinfo.get('kwargs', None)
-
-        # Build final function with provided args.
-        adminfunc = functools.partial(funcobj)
-        if funcargs:
-            adminfunc = functools.partial(adminfunc, *funcargs)
-        if funckwargs:
-            adminfunc = functools.partial(adminfunc, **funckwargs)
-        return adminfunc
-
 
 class MyFirstIRCFactory(protocol.ReconnectingClientFactory):
 

@@ -74,13 +74,17 @@ class AdminHandler(object):
         self.banned = self.ban_load()
         self.banned_warned = {}
         # Time of last response sent (rate-limiting/bans)
-        self.last_respond = None
+        self.last_handle = None
         # Last nick responded to (rate-limiting/bans)
         self.last_nick = None
         # Last command handled (dupe-blocking/rate-limiting)
         self.last_command = None
         # Set startup time.
         self.starttime = datetime.now()
+        # Whether or not response rate-limiting is enabled.
+        self.limit_rate = True
+        self.handlingcount = 0
+        self.handlinglock = None
 
     def admins_add(self, nick):
         """ Add an admin to the list and save it. """
@@ -351,8 +355,30 @@ class CommandFuncs(object):
                 self.admin.blacklist = False
             else:
                 return 'invalid value for blacklist option (true/false).'
-
         return 'blacklist enabled: {}'.format(self.admin.blacklist)
+
+    @basic_command
+    def admin_getattr(self, rest):
+        """ Return value for attribute. """
+        if not rest.strip():
+            return 'usage: getattr <attribute>'
+
+        if '.' in rest:
+            attrs = rest.split('.')
+        else:
+            attrs = [rest]
+
+        abase = self
+        for aname in attrs:
+            if hasattr(abase, aname):
+                try:
+                    abase = getattr(abase, aname)
+                except Exception as ex:
+                    return ex
+            else:
+                return 'no attribute named: {}'.format(aname)
+
+        return '{} = {}'.format(rest, abase)
 
     @basic_command
     def admin_identify(self, rest):
@@ -374,6 +400,24 @@ class CommandFuncs(object):
         #        'args': ['JOIN {}'.format(rest)]}
         self.admin.sendLine('JOIN {}'.format(rest))
         return None
+
+    @basic_command
+    def admin_limitrate(self, rest):
+        """ Toggle limit_rate """
+        if rest == '?' or (not rest):
+            # current status will be printed at the bottom of this func.
+            pass
+        elif rest == '-':
+            # Toggle current value.
+            self.admin.limit_rate = False if self.admin.limit_rate else True
+        else:
+            if parse_true(rest):
+                self.admin.limit_rate = True
+            elif parse_false(rest):
+                self.admin.limit_rate = False
+            else:
+                return 'invalid value for limitrate option (true/false).'
+        return 'limitrate enabled: {}'.format(self.admin.limit_rate)
 
     @basic_command
     def admin_msg(self, rest):
