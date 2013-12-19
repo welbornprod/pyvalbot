@@ -130,6 +130,9 @@ class MyFirstIRCProtocol(irc.IRCClient):
         nick, _, host = user.partition('!')
         message = message.strip()
 
+        if (channel == self.admin.nickname) and (nick.lower() == 'nickserv'):
+            print('NickServ: {}'.format(message))
+        
         # Disallow banned nicks.
         if nick in self.admin.banned:
             return
@@ -172,7 +175,7 @@ class MyFirstIRCProtocol(irc.IRCClient):
             # If the message triggers a command, then a function is returned to
             # handle it. If there is no function returned, then just return.
             print('Parsing message: ({}) {}: {}'.format(channel,
-                                                        user,
+                                                        nick,
                                                         message))
             func = self.commandhandler.parse_data(user, channel, message)
             

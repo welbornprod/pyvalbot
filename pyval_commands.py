@@ -330,14 +330,6 @@ class CommandFuncs(object):
         else:
             return 'unable to ban: {}'.format(rest)
 
-    @basic_command
-    def admin_unban(self, rest):
-        """ Unban a nick. """
-        if self.admin.ban_remove(rest):
-            return 'unbanned: {}'.format(rest)
-        else:
-            return 'unable to unban: {}'.format(rest)
-
     @simple_command
     def admin_banned(self):
         """ list banned. """
@@ -363,12 +355,36 @@ class CommandFuncs(object):
         return 'blacklist enabled: {}'.format(self.admin.blacklist)
 
     @basic_command
+    def admin_identify(self, rest):
+        """ Identify with nickserv, expects !identify password """
+
+        print('Identifying with nickserv...')
+        if not rest:
+            return 'no password supplied.'
+
+        self.admin.sendLine('PRIVMSG NickServ :IDENTIFY '
+                            '{} {}'.format(self.admin.nickname, rest))
+        return None
+
+    @basic_command
     def admin_join(self, rest):
         """ Join a channel as pyval. """
         print('Trying to join: {}'.format(rest))
         # return {'funcname': 'sendLine',
         #        'args': ['JOIN {}'.format(rest)]}
         self.admin.sendLine('JOIN {}'.format(rest))
+        return None
+
+    @basic_command
+    def admin_msg(self, rest):
+        """ Send a private msg, expects !msg nick/channel message """
+
+        msgparts = rest.split()
+        if len(msgparts) < 2:
+            return 'need target and message.'
+        target = msgparts[0]
+        msgtext = ' '.join(msgparts[1:])
+        self.admin.sendLine('PRIVMSG {} :{}'.format(target, msgtext))
         return None
 
     @basic_command
@@ -397,6 +413,14 @@ class CommandFuncs(object):
         print('Shutting down...')
         self.admin.quit(message='shutting down...')
         return None
+
+    @basic_command
+    def admin_unban(self, rest):
+        """ Unban a nick. """
+        if self.admin.ban_remove(rest):
+            return 'unbanned: {}'.format(rest)
+        else:
+            return 'unable to unban: {}'.format(rest)
 
     def build_help(self):
         """ Builds a dict with {cmdname: usage string} """
