@@ -6,7 +6,7 @@ Python Evaluation Bot for IRC (using PyPy-Sandbox, Twisted, and Python 2.7)
 Requirements: 
 -------------
 
-python-pypy.sandbox package found in debian/ubuntu distros. (looks for pypy-sandbox in /usr/bin)
+python-pypy.sandbox or python-pypy.translator.sandbox package found in debian/ubuntu distros. (looks for pypy-sandbox in /usr/bin)
 
 Twisted python package.
 
