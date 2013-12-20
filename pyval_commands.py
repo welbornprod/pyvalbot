@@ -145,21 +145,27 @@ class AdminHandler(object):
         """ Add a warning to a nick, after 3 warnings ban them for good. """
 
         if nick in self.admins:
+            # Admins wont be banned or counted.
             return False
 
         if permaban:
+            # Straight to permaban.
             self.banned.append(nick)
             self.ban_save()
             return True
 
+        # Auto banner.
         if nick in self.banned_warned.keys():
+            # Increment the warning count.
             self.banned_warned[nick]['last'] = datetime.now()
             self.banned_warned[nick]['count'] += 1
             if self.banned_warned[nick]['count'] == 3:
+                # No more warnigns, permaban.
                 self.banned.append(nick)
                 self.ban_save()
                 return True
         else:
+            # First warning.
             self.banned_warned[nick] = {'last': datetime.now(),
                                         'count': 1}
         return False
@@ -198,7 +204,7 @@ class AdminHandler(object):
 
 class CommandHandler(object):
 
-    """ Handles commands/messages sent from ircbot.py """
+    """ Handles commands/messages sent from pyvalbot.py """
 
     def __init__(self, defer_=None, reactor_=None, adminhandler=None):
         self.command_char = '!'
@@ -212,17 +218,16 @@ class CommandHandler(object):
             otherwise, return None.
         """
         command, sep, rest = msg.lstrip(self.command_char).partition(' ')
+        # Retrieve function related to this command.
         func = getattr(self.commands, 'cmd_' + command, None)
-        adminfunc = getattr(self.commands, 'admin_' + command, None)
-        if adminfunc:
-            if username in self.admin.admins:
+        # Check admin command.
+        if username and (username in self.admin.admins):
+            adminfunc = getattr(self.commands, 'admin_' + command, None)
+            if adminfunc:
                 # return callable admin command.
                 return adminfunc
-            else:
-                print('Non-admin tried admin command: '
-                      '{} - {}'.format(username, command))
-                return None
-        
+
+        # Return callable function for command.
         return func
  
     def parse_data(self, user, channel, msg):
@@ -363,22 +368,11 @@ class CommandFuncs(object):
         if not rest.strip():
             return 'usage: getattr <attribute>'
 
-        if '.' in rest:
-            attrs = rest.split('.')
-        else:
-            attrs = [rest]
+        parent, attrname, attrval = self.parse_attrstr(rest)
+        if attrname is None:
+            return 'no attribute named: {}'.format(rest)
 
-        abase = self
-        for aname in attrs:
-            if hasattr(abase, aname):
-                try:
-                    abase = getattr(abase, aname)
-                except Exception as ex:
-                    return ex
-            else:
-                return 'no attribute named: {}'.format(aname)
-
-        return '{} = {}'.format(rest, abase)
+        return '{} = {}'.format(rest, attrval)
 
     @basic_command
     def admin_identify(self, rest):
@@ -451,6 +445,49 @@ class CommandFuncs(object):
         self.admin.sendLine(rest)
         return None
 
+    @basic_command
+    def admin_setattr(self, rest):
+        """ Set an attribute to self or children of self by string.
+            Example:
+                self.admin_setattr('admin.blacklist True')
+            Automatically converts types from string so
+            admin_setattr('attribute True')
+            will set attribute to bool(True)
+            ...special handling is needed for False and other values.
+
+        """
+
+        if not rest.strip():
+            return 'usage: setattr <attribute> <val>'
+
+        # Parse args
+        cmdargs = rest.split()
+        if len(cmdargs) != 2:
+            return 'incorrect number of arguments for setattr.'
+        attrstr, valstr = cmdargs
+
+        # Find old value, final attrname, and parent of old value.
+        parent, oldname, oldval = self.parse_attrstr(attrstr)
+        if oldname is None:
+            return 'no attribute named: {}'.format(attrstr)
+
+        # convret the new string value into the old type.
+        try:
+            newval = self.parse_typestr(oldval, valstr)
+        except Exception as ex:
+            # Unable to convert new value into old type.
+            return ex
+
+        # Actually set the new value.
+        try:
+            setattr(parent, oldname, newval)
+        except Exception as ex:
+            # Unable to set the attribute.
+            return ex
+
+        # Success. Show new value.
+        return '{} = {}'.format(attrstr, newval)
+
     @simple_command
     def admin_shutdown(self):
         """ Shutdown the bot. """
@@ -470,25 +507,20 @@ class CommandFuncs(object):
         """ Builds a dict with {cmdname: usage string} """
         # Build help information.
         help_info = {
-            'help':
-            ('usage: {cmd}help [cmdname], '
-             '(list commands or show command help.)'),
-            'py':
-            ('usage: {cmd}py <python code>, '
-             '(evaluates limited python code.)'),
-            'python':
-            ('usage: {cmd}python <python code>, '
-             '(evaluates limited python code.)'),
-            'pyval':
-            ('usage: {cmd}pyval <your message>, '
-             '(say something to the pyval operator.)'),
-            'time':
-            ('usage: {cmd}time, (shows current time for pyval.)'),
-            'uptime':
-            ('usage: {cmd}uptime, (show uptime for pyval.)'),
+            'help': ('help [cmdname]',
+                     'list commands or show command help.)'),
+            'py': ('py <python code>',
+                   'evaluates limited python code.'),
+            'python': ('python <python code>',
+                       'evaluates limited python code.'),
+            'pyval': ('pyval <your message>',
+                      'say something to the pyval operator.'),
+            'time': ('time',
+                     'shows current time for pyval.'),
+            'uptime': ('uptime',
+                       'show uptime for pyval.'),
         }
-        for helpkey, helpval in help_info.items():
-            help_info[helpkey] = helpval.format(cmd=self.admin.command_char)
+
         return help_info
 
     @basic_command
@@ -516,7 +548,10 @@ class CommandFuncs(object):
             # Look for cmd name in help_info.
             rest = rest.lower()
             if rest in self.help_info.keys():
-                return self.help_info[rest]
+                usage, desc = self.help_info[rest]
+                return '{}{}, ({})'.format(self.admin.command_char,
+                                           usage,
+                                           desc)
             else:
                 return 'no command named: {}'.format(rest)
         else:
@@ -609,3 +644,57 @@ class CommandFuncs(object):
         # commands are final and stable.
         # This is a list of 'acceptable' commands right now.
         return ['help', 'py', 'python', 'pyval', 'uptime', 'version']
+
+    def parse_attrstr(self, attrstr):
+        """ Return value and parent for attribute by string. """
+        if '.' in attrstr:
+            attrs = attrstr.split('.')
+        else:
+            attrs = [attrstr]
+
+        # Find old value, and parent of old value.
+        parent = None
+        abase = self
+        for aname in attrs:
+            if hasattr(abase, aname):
+                parent = abase
+                abase = getattr(parent, aname)
+            else:
+                return None, None, None
+        # Parent, and value.
+        return parent, aname, abase
+
+    def parse_typestr(self, oldval, newval):
+        """ Returns correct type from string, 
+            when given the original value.
+            Example:
+                mybool = True
+                newval = parse_typestr(mybool, 'False')
+                #   newval == bool(False)
+                myint = 23
+                newval = parse_typestr(myint, '46')
+                #   newval == int(46)
+
+            Handles all builtin types, not datetime (yet).
+            Does not suppress any ValueError/TypeError.
+        """
+
+        def make_bool(s):
+            """ Return a bool by string value. """
+            if s.lower() in ('false', '0'):
+                return False
+            return bool(s)
+
+        # NoneType just returns none.
+        if oldval is None:
+            return None
+
+        handlers = {bool: make_bool}
+
+        if type(oldval) in handlers.keys():
+            # Special cases need custom handlers. Like bool('False')...
+            converted = handlers[type(oldval)](newval)
+        else:
+            # Normal case, or no custom handler.
+            converted = type(oldval)(newval)
+        return converted
