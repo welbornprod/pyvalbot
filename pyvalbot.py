@@ -10,6 +10,7 @@
 
 # System/General stuff
 from datetime import datetime
+from os import getpid
 import os.path
 import sys
 
@@ -120,10 +121,6 @@ class MyFirstIRCProtocol(irc.IRCClient):
         # Disallow banned nicks.
         if nick in self.admin.banned:
             return None
-        # Disallow backup of requests. If handlingcount is too much
-        # just ignore this one.
-        if self.admin.handlingcount > 2:
-            return None
 
         # rate-limit responses, handle auto-bans.
         ban_msg = None
@@ -177,11 +174,17 @@ class MyFirstIRCProtocol(irc.IRCClient):
             d = defer.maybeDeferred(func, rest.strip(), nick=nick)
 
         if self.admin.limit_rate:
+            # Disallow backup of requests. If handlingcount is too much
+            # just ignore this one.
+            if (not is_admin) and (self.admin.handlingcount > 3):
+                print('Too busy, ignoring command: {}'.format(message))
+                return None
             # Keep track of how many requests are unanswered (handling).
             self.admin.handlinglock.acquire()
             self.admin.handlingcount += 1
             self.admin.handlinglock.release()
-            print('Request Count: {}'.format(self.admin.handlingcount))
+            #print('Request Count: {}'.format(self.admin.handlingcount))
+
         # Add error callbackfor func, the _show_error callback will turn the
         # error into a terse message first:
         d.addErrback(self._showError)
@@ -204,18 +207,24 @@ class MyFirstIRCProtocol(irc.IRCClient):
             if nick:
                 msg = '{}, {}'.format(nick, msg)
             self.msg(target, msg)
-            if self.admin.handlingcount > 0:
-                self.admin.handlinglock.acquire()
-                self.admin.handlingcount -= 1
-                self.admin.handlinglock.release()
+        # admin cmds have no msg sometimes, but still count as 'handling'.
+        if self.admin.handlingcount > 0:
+            self.admin.handlinglock.acquire()
+            self.admin.handlingcount -= 1
+            self.admin.handlinglock.release()
 
     def _sendMessage(self, msg, target, nick=None):
         if self.admin.handlingcount > 1:
             # Calculate delay needed based on current handling count.
             # Ends up being around 2 seconds per response.
             # Schedule message handling for later.
-            timeout = 2 * self.admin.handlingcount
-            print('Delaying msg response for later: {}'.format(timeout))
+            if msg:
+                timeout = 2 * self.admin.handlingcount
+                print('Delaying msg response for later: {}'.format(timeout))
+            else:
+                # admin commands have no msg sometimes, still 'handling'
+                # though. Don't delay commands that don't have a msg.
+                timeout = 0.25
             reactor.callLater(timeout,
                               self._handleMessage,
                               msg,
@@ -275,7 +284,22 @@ class MyFirstIRCFactory(protocol.ReconnectingClientFactory):
                 print('Key not found in self.argd!: {}'.format(argname))
         return None
 
- 
+
+def write_pidfile():
+    """ Writes the current pid to file, for pyval_restart. """
+
+    try:
+        pyvalpid = getpid()
+        with open('pyval_pid', 'w') as fwrite:
+            fwrite.write(str(pyvalpid))
+        print('Wrote pid to pyval_pid: {}'.format(pyvalpid))
+        return True
+    except (IOError, OSError) as ex:
+        print('Unable to write pid file, pyval_restart will be useless.\n'
+              '{}'.format(ex))
+        return False
+
+
 def main(reactor, description, argd):
     """ main-entry point for ircbot. """
     try:
@@ -304,6 +328,9 @@ if __name__ == '__main__':
     else:
         # normal stderr logging
         log.startLogging(sys.stderr)
+
+    # Write pid file.
+    write_pidfile()
 
     # Start irc client.
     task.react(main, ['tcp:irc.freenode.net:6667', main_argd])

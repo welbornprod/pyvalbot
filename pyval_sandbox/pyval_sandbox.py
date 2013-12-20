@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
 """ pyval_sandbox.py
@@ -76,7 +76,13 @@ def main(args):
     source = sys.stdin.read()
     compiler = Compiler(locals=dumblocals)
     try:
-        incomplete = compiler.runsource(source)
+        if '\n' in source:
+            # multiline, must use print() to get output.
+            mode = 'exec'
+        else:
+            # single line, interpreter mode. eval is used.
+            mode = 'single'
+        incomplete = compiler.runsource(source, symbol=mode)
     except Exception as ex:
         # Send error signal.
         compiler.send_error(ex)

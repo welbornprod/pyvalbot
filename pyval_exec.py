@@ -125,8 +125,11 @@ class ExecBox(object):
         if not self.inputstr:
             self.error_return('No source.')
         self.inputstr = self.inputstr.replace('\\n', '\n')
+        # Add shortcut for print, ?(value)
+        self.inputstr = self.inputstr.replace('?(', 'print(')
         if ('\n' in self.inputstr) and (not self.inputstr.endswith('\n')):
-            self.inputstr = '{}\n'.format(self.inputstr)
+                # Make sure code ends with \n.
+                self.inputstr = '{}\n'.format(self.inputstr)
 
         # Get locations for pypy-sandbox, sandbox dir, pyval_sandbox.
         pypysandbox = os.path.join('/usr', 'bin', 'pypy-sandbox')
