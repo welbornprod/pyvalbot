@@ -202,16 +202,22 @@ class MyFirstIRCProtocol(irc.IRCClient):
         self.admin.last_nick = nick
 
     def _handleMessage(self, msg, target, nick=None):
-        """ Actually send the message, decrease the handling count. """
+        """ Actually send the message,
+            decrease the handling count,
+            increase the handled count.
+        """
         if msg:
             if nick:
                 msg = '{}, {}'.format(nick, msg)
             self.msg(target, msg)
+
         # admin cmds have no msg sometimes, but still count as 'handling'.
         if self.admin.handlingcount > 0:
             self.admin.handlinglock.acquire()
             self.admin.handlingcount -= 1
             self.admin.handlinglock.release()
+        # increase the 'handled' count.
+        self.admin.handled += 1
 
     def _sendMessage(self, msg, target, nick=None):
         if self.admin.handlingcount > 1:

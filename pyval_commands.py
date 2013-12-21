@@ -61,6 +61,9 @@ class AdminHandler(object):
     """ Handles admin functions like bans/admins/settings. """
 
     def __init__(self, nick=None):
+        # Set startup time.
+        self.starttime = datetime.now()
+        # Set command character and nick.
         self.command_char = '!'
         self.nickname = nick or 'pyval'
         # Whether or not to use PyVal.ExecBoxs blacklist.
@@ -79,12 +82,13 @@ class AdminHandler(object):
         self.last_nick = None
         # Last command handled (dupe-blocking/rate-limiting)
         self.last_command = None
-        # Set startup time.
-        self.starttime = datetime.now()
         # Whether or not response rate-limiting is enabled.
         self.limit_rate = True
+        # Current load, and lock required to change its value.
         self.handlingcount = 0
         self.handlinglock = None
+        # Number of handled requests
+        self.handled = 0
 
     def admins_add(self, nick):
         """ Add an admin to the list and save it. """
@@ -200,6 +204,11 @@ class AdminHandler(object):
         if nick in self.banned_warned.keys():
             self.banned_warned[nick] = {'last': datetime.now(), 'count': 0}
         return self.ban_save()
+
+    def get_uptime(self):
+        """ Return the current uptime for this instance. """
+        uptime = ((datetime.now() - self.starttime).total_seconds() / 60)
+        return round(uptime, 2)
 
 
 class CommandHandler(object):
@@ -495,6 +504,12 @@ class CommandFuncs(object):
         self.admin.quit(message='shutting down...')
         return None
 
+    @simple_command
+    def admin_stats(self):
+        """ Return simple stats info. """
+        uptime = self.admin.get_uptime()
+        return 'uptime: {}, handled: {}'.format(uptime, self.admin.handled)
+
     @basic_command
     def admin_unban(self, rest):
         """ Unban a nick. """
@@ -619,7 +634,7 @@ class CommandFuncs(object):
     @simple_command
     def cmd_uptime(self):
         """ Return uptime, and starttime """
-        uptime = ((datetime.now() - self.admin.starttime).total_seconds() / 60)
+        uptime = self.admin.get_uptime()
         s = 'start: {}, up: {}min'.format(self.admin.starttime, uptime)
         return s
     
