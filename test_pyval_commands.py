@@ -100,3 +100,17 @@ class TestCommandFuncs(unittest.TestCase):
         setattrfunc(args, nick='testadmin')
         self.assertEqual(self.cmdhandler.admin.blacklist, True,
                          msg='Failed to set attribute')
+
+    def test_print_topastebin(self):
+        """ test print_topastebin() """
+
+        pastebin = self.cmdhandler.commands.print_topastebin
+
+        noneresult = pastebin('')
+        self.assertIsNone(noneresult, msg='empty arg should produce None')
+
+        pastebinurl = pastebin('valid string')
+        goodurl = pastebinurl.startswith('http')
+        self.assertEqual(goodurl, True,
+                         msg='valid string should produce a paste bin url')
+        print('test_print_topastebin - Url: {}'.format(pastebinurl))

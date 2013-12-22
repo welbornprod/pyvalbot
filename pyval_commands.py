@@ -12,8 +12,9 @@
 import os
 from sys import version as sysversion
 from datetime import datetime
+import subprocess
 
-from pyval_exec import ExecBox, TimedOut
+from pyval_exec import ExecBox, TempInput, TimedOut
 from pyval_util import NAME, VERSION
 
 ADMINFILE = '{}_admins.lst'.format(NAME.lower().replace(' ', '-'))
@@ -596,12 +597,40 @@ class CommandFuncs(object):
         # Execute using pypy-sandbox/pyval_sandbox powered ExecBox.
         execbox = ExecBox(rest)
         try:
-            result = execbox.execute(use_blacklist=self.admin.blacklist)
-            resultstr = 'result: {}'.format(result)
+            # Get raw output from eval, this will have to be checked
+            # and possibly trimmed later before returning a result.
+            results = execbox.execute(use_blacklist=self.admin.blacklist,
+                                      raw_output=True)
         except TimedOut:
-            resultstr = 'result: timed out.'
+            return 'result: timed out.'
         except Exception as ex:
-            resultstr = 'error: {}'.format(ex)
+            return 'error: {}'.format(ex)
+
+        if len(results) > 160:
+            # Use pastebinit, with safe_output() settings.
+            pastebincontent = execbox.safe_output(maxlines=50,
+                                                  maxlength=230)
+            pastebincontent = pastebincontent.replace('\\n', '\n')
+            pastebinurl = self.print_topastebin(pastebincontent)
+            # Get chat safe output (partial eval output with pastebin url)
+            if pastebinurl:
+                # Build chat result
+                # semi-full output was pasted, but still need acceptable chat
+                # msg.
+                chatout = execbox.safe_output(maxlines=30, maxlength=140)
+                if len(chatout) > 100:
+                    chatout = chatout[:100]
+                resultstr = ('{} '.format(chatout) +
+                             ' full: {}'.format(pastebinurl))
+            else:
+                # failed to pastebin.
+                chatout = execbox.safe_output(maxlines=30, maxlength=140)
+                if len(chatout) > 100:
+                    chatout = chatout[:100]
+                resultstr = '{} (...truncated)'.format(chatout)
+        else:
+            # No pastebin needed.
+            resultstr = execbox.safe_output()
 
         return resultstr
 
@@ -713,3 +742,57 @@ class CommandFuncs(object):
             # Normal case, or no custom handler.
             converted = type(oldval)(newval)
         return converted
+
+    def print_topastebin(self, s):
+        """ Uses paste.pound-python.org to paste a string. """
+
+        if not s:
+            return None
+
+        cmdargs = ['/usr/bin/pastebinit',
+                   '-a', 'pyval',
+                   '-b', 'http://paste.pound-python.org']
+        with TempInput(s) as stdinput:
+            proc = subprocess.Popen(cmdargs,
+                                    stdin=stdinput,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+
+        output = self.proc_output(proc)
+        if output.startswith('http'):
+            return output
+        else:
+            return None
+
+    def proc_output(self, proc):
+        """ Get process output, whether its on stdout or stderr.
+            Used with _exec/timed_call.
+            Arguments:
+                proc  : a POpen() process to get output from.
+        """
+        # Get stdout
+        outlines = []
+        for line in iter(proc.stdout.readline, ''):
+            if line:
+                outlines.append(line.strip('\n'))
+            else:
+                break
+
+        # Get stderr
+        errlines = []
+        for line in iter(proc.stderr.readline, ''):
+            if line:
+                errlines.append(line.strip('\n'))
+            else:
+                break
+
+        # Pick stdout or stderr.
+        if outlines:
+            output = '\n'.join(outlines)
+        elif errlines:
+            output = '\n'.join(outlines)
+        else:
+            # no output
+            output = ''
+
+        return output.strip('\n')

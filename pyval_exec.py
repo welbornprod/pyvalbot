@@ -46,11 +46,12 @@ class ExecBox(object):
         self.inputtrim = None
         # Set during execute()
         self.parsed = None
-
-        # Maximum number of nested parenthesis on one line.
-        self.nestedmax = 5
         # Maximum number of seconds to run.
-        self.timeout = 3
+        self.timeout = 5
+        # Maximum lines/length for safe_output()
+        # Disabled if < 1.
+        self.maxlines = 0
+        self.maxlength = 0
         
     def __str__(self):
         return self.output
@@ -124,7 +125,11 @@ class ExecBox(object):
         """
         if not self.inputstr:
             self.error_return('No source.')
+        # let the user use '\n' (\\n) as newlines, and '\\n' ('\\\\n') as
+        # escaped newline characters.
+        self.inputstr = self.inputstr.replace('\\\\n', '//n')
         self.inputstr = self.inputstr.replace('\\n', '\n')
+        self.inputstr = self.inputstr.replace('//n', '\\n')
         # Add shortcut for print, ?(value)
         self.inputstr = self.inputstr.replace('?(', 'print(')
         if ('\n' in self.inputstr) and (not self.inputstr.endswith('\n')):
@@ -138,7 +143,7 @@ class ExecBox(object):
         targetfile = '/tmp/pyval_sandbox.py'
         # Setup command args for Popen.
         cmdargs = [pypysandbox,
-                   '--timeout=5',
+                   '--timeout={}'.format(self.timeout),
                    '--tmp={}'.format(sandboxdir),
                    targetfile]
 
@@ -256,9 +261,11 @@ class ExecBox(object):
             self.printdebug('final output:\n    {}'.format(debugout))
         return output.strip('\n')
 
-    def safe_output(self):
+    def safe_output(self, maxlines=None, maxlength=None):
         """ Retrieves output safe for irc. """
         
+        maxlines = maxlines if maxlines is not None else self.maxlines
+        maxlength = maxlength if maxlength is not None else self.maxlength
         if self.lasterror:
             lines = self.lasterror.split('\n')
             msg = 'error'
@@ -268,18 +275,32 @@ class ExecBox(object):
         else:
             return 'No output.'
 
-        truncated = False
-        if len(lines) > 30:
-            lines = lines[:30]
-            truncated = True
+        # truncate by line count first.
+        if (maxlines > 0) and (len(lines) > maxlines):
+            lines = lines[:maxlines]
+            lines.append('(...truncated at {} lines.)'.format(maxlines))
+            # Truncate each line if maxlength is set.
+            if maxlength > 0:
+                trimmedlines = []
+                for line in lines:
+                    if len(line) > maxlength:
+                        newline = '{} (..truncated)'.format(line[:maxlength])
+                        trimmedlines.append(newline)
+                    else:
+                        trimmedlines.append(line)
+                lines = trimmedlines
 
-        oneliner = '\\n'.join(lines)
-        if len(oneliner) > 100:
-            oneliner = oneliner[:100]
-            truncated = True
-
-        if truncated:
-            oneliner = '{} (...truncated)'.format(oneliner)
+            # Save edited lines as a one-line string.
+            oneliner = '\\n'.join(lines)
+        # truncate whole output length
+        elif (maxlength > 0) and (len(self.output) > maxlength):
+            # Save original output as a one-line string.
+            oneliner = '\\n'.join(lines)
+            # Truncate at maxlength.
+            oneliner = '{} (...truncated)'.format(oneliner[:maxlength])
+        else:
+            oneliner = '\\n'.join(lines)
+        # Append error tag if any.
         if msg:
             oneliner = '{}: {}'.format(msg, oneliner)
 
