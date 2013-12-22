@@ -1,3 +1,4 @@
 *.pyc
 *.lst
 pyval_pid
+.coverage
