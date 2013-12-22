@@ -508,7 +508,7 @@ class CommandFuncs(object):
     def admin_stats(self):
         """ Return simple stats info. """
         uptime = self.admin.get_uptime()
-        return 'uptime: {}, handled: {}'.format(uptime, self.admin.handled)
+        return 'uptime: {}min, handled: {}'.format(uptime, self.admin.handled)
 
     @basic_command
     def admin_unban(self, rest):
@@ -632,18 +632,18 @@ class CommandFuncs(object):
         return d
     
     @simple_command
+    def cmd_time(self):
+        """ Retrieve current date and time. """
+        
+        return str(datetime.now())
+
+    @simple_command
     def cmd_uptime(self):
         """ Return uptime, and starttime """
         uptime = self.admin.get_uptime()
         s = 'start: {}, up: {}min'.format(self.admin.starttime, uptime)
         return s
     
-    @simple_command
-    def cmd_time(self):
-        """ Retrieve current date and time. """
-        
-        return str(datetime.now())
-
     @simple_command
     def cmd_version(self):
         """ Return pyval version, and sys.version. """
