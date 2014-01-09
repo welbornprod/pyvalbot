@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+""" PyVal Utilities Module
+    Holds globally shared info about pyval.
+"""
+
 NAME = 'PyVal'
-VERSION = '1.0.1'
+VERSION = '1.0.2'
 VERSIONSTR = '{} v. {}'.format(NAME, VERSION)

@@ -14,6 +14,7 @@ from sys import version as sysversion
 from datetime import datetime
 import subprocess
 
+
 from pyval_exec import ExecBox, TempInput, TimedOut
 from pyval_util import NAME, VERSION
 
@@ -211,17 +212,39 @@ class AdminHandler(object):
         uptime = ((datetime.now() - self.starttime).total_seconds() / 60)
         return round(uptime, 2)
 
+    def handling_decrease(self):
+        if self.handlingcount > 0:
+            self.handlinglock.acquire()
+            self.handlingcount -= 1
+            self.handlinglock.release()
+
+    def handling_increase(self):
+        self.handlinglock.acquire()
+        self.handlingcount += 1
+        self.handlinglock.release()
+
 
 class CommandHandler(object):
 
     """ Handles commands/messages sent from pyvalbot.py """
 
-    def __init__(self, defer_=None, reactor_=None, adminhandler=None):
+    def __init__(self, **kwargs):
+        """ Keyword Arguments:
+                ** These are required. **
+                adminhandler  : Shared AdminHandler() for these functions.
+                defer_        : Shared defer module.
+                reactor_      : Shared reactor module.
+                task_         : Shared task module.
+        """
+        self.admin = kwargs.get('adminhandler', None)
+        self.defer = kwargs.get('defer_', None)
+        self.reactor = kwargs.get('reactor_', None)
+        self.task = kwargs.get('task_', None)
         self.command_char = '!'
-        self.commands = CommandFuncs(defer_=defer_,
-                                     reactor_=reactor_,
-                                     adminhandler=adminhandler)
-        self.admin = adminhandler
+        self.commands = CommandFuncs(defer_=self.defer,
+                                     reactor_=self.reactor,
+                                     task_=self.task,
+                                     adminhandler=self.admin)
 
     def parse_command(self, msg, username=None):
         """ Parse a message, return corresponding command function if found,
@@ -296,12 +319,18 @@ class CommandFuncs(object):
 
     """ Holds only the command-handling functions themselves. """
     
-    def __init__(self, defer_=None, reactor_=None, adminhandler=None):
-        # Access to admin functions/settings.
-        self.admin = adminhandler
-
-        self.defer = defer_
-        self.reactor = reactor_
+    def __init__(self, **kwargs):
+        """ Keyword Arguments:
+                ** These are required. **
+                adminhandler  : Shared AdminHandler() for these functions.
+                defer_        : Shared defer module.
+                reactor_      : Shared reactor module.
+                task_         : Shared task module.
+        """
+        self.admin = kwargs.get('adminhandler', None)
+        self.defer = kwargs.get('defer_', None)
+        self.reactor = kwargs.get('reactor_', None)
+        self.task = kwargs.get('task_', None)
 
         self.help_info = self.build_help()
 
@@ -382,6 +411,9 @@ class CommandFuncs(object):
         if attrname is None:
             return 'no attribute named: {}'.format(rest)
 
+        attrval = str(attrval)
+        if len(attrval) > 250:
+            attrval = '{} ...truncated'.format(attrval[:250])
         return '{} = {}'.format(rest, attrval)
 
     @basic_command
@@ -496,6 +528,9 @@ class CommandFuncs(object):
             return ex
 
         # Success. Show new value.
+        newval = str(newval)
+        if len(newval) > 250:
+            newval = '{} ...truncated'.format(newval[:250])
         return '{} = {}'.format(attrstr, newval)
 
     @simple_command
@@ -586,6 +621,28 @@ class CommandFuncs(object):
             Restrictions are set. No os module, no nested eval() or exec().
         """
 
+        def pastebin_chatout(pastebinurl):
+            """ Callback for deferred print_topastebin.
+            Expects result from print_topastebin(content).
+                Returns final chat output when finished.
+            """
+            # Get chat safe output (partial eval output with pastebin url)
+            if pastebinurl:
+                # Build chat result
+                # semi-full output was pasted, but still need acceptable chat
+                # msg.
+                chatout = execbox.safe_output(maxlines=30, maxlength=140)
+                if len(chatout) > 100:
+                    chatout = chatout[:100]
+                return ('{} '.format(chatout) +
+                        ' full: {}'.format(pastebinurl))
+            else:
+                # failed to pastebin.
+                chatout = execbox.safe_output(maxlines=30, maxlength=140)
+                if len(chatout) > 100:
+                    chatout = chatout[:100]
+                return '{} (...truncated)'.format(chatout)
+
         if not rest.replace(' ', '').replace('\t', ''):
             # No input.
             return None
@@ -607,27 +664,32 @@ class CommandFuncs(object):
             return 'error: {}'.format(ex)
 
         if len(results) > 160:
-            # Use pastebinit, with safe_output() settings.
-            pastebincontent = execbox.safe_output(maxlines=50,
-                                                  maxlength=230)
-            pastebincontent = pastebincontent.replace('\\n', '\n')
-            pastebinurl = self.print_topastebin(pastebincontent)
-            # Get chat safe output (partial eval output with pastebin url)
-            if pastebinurl:
-                # Build chat result
-                # semi-full output was pasted, but still need acceptable chat
-                # msg.
-                chatout = execbox.safe_output(maxlines=30, maxlength=140)
-                if len(chatout) > 100:
-                    chatout = chatout[:100]
-                resultstr = ('{} '.format(chatout) +
-                             ' full: {}'.format(pastebinurl))
+            # Use pastebinit, with safe_pastebin() settings.
+            pastebincontent = self.safe_pastebin(execbox.output,
+                                                 maxlines=65,
+                                                 maxlength=240)
+            if self.admin.handlingcount > 1:
+                # Delay this pastebin call based on the handling count.
+                timeout = 3 * self.admin.handlingcount
+                print('Delaying pastebin call for {} seconds.'.format(timeout))
+                # Create a deferred that will be called at a later time.
+                deferredurl = self.task.deferLater(self.reactor,
+                                                   timeout,
+                                                   self.print_topastebin,
+                                                   pastebincontent)
+                # Create a callback that takes in the url and produces
+                # the final chat response.
+                # IRCClient.privmsg() looks for a deferred and will add
+                # the _sendMessage callback to this when it is finished.
+                # (after some further checking/processing ofcourse)
+                deferredurl.addCallback(pastebin_chatout)
+                return deferredurl
+
             else:
-                # failed to pastebin.
-                chatout = execbox.safe_output(maxlines=30, maxlength=140)
-                if len(chatout) > 100:
-                    chatout = chatout[:100]
-                resultstr = '{} (...truncated)'.format(chatout)
+                # paste it right away
+                pastebinout = self.print_topastebin(pastebincontent)
+                resultstr = pastebin_chatout(pastebinout)
+
         else:
             # No pastebin needed.
             resultstr = execbox.safe_output()
@@ -752,11 +814,15 @@ class CommandFuncs(object):
         cmdargs = ['/usr/bin/pastebinit',
                    '-a', 'pyval',
                    '-b', 'http://paste.pound-python.org']
-        with TempInput(s) as stdinput:
-            proc = subprocess.Popen(cmdargs,
-                                    stdin=stdinput,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE)
+        try:
+            with TempInput(s) as stdinput:
+                proc = subprocess.Popen(cmdargs,
+                                        stdin=stdinput,
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE)
+        except Exception as ex:
+            print('Error running pastebinit:\n{}'.format(ex))
+            return None
 
         output = self.proc_output(proc)
         if output.startswith('http'):
@@ -770,6 +836,10 @@ class CommandFuncs(object):
             Arguments:
                 proc  : a POpen() process to get output from.
         """
+
+        if not proc:
+            return ''
+
         # Get stdout
         outlines = []
         for line in iter(proc.stdout.readline, ''):
@@ -796,3 +866,46 @@ class CommandFuncs(object):
             output = ''
 
         return output.strip('\n')
+
+    def safe_pastebin(self, s, maxlines=65, maxlength=240):
+        """ Format string for safe pastebin pasting.
+            maxlines is the limit of lines allowed.
+            maxlength is the limit allowed for each line.
+        """
+
+        if maxlines < 1:
+            maxlines = 1
+        if maxlength < 1:
+            maxlength = 1
+
+        if not s:
+            return s
+
+        if '\n' in s:
+            lines = s.split('\n')
+        elif '\\n' in s:
+            lines = s.split('\\n')
+        else:
+            lines = [s]
+
+        truncatedlines = False
+        # truncate by line count first.
+        if len(lines) > maxlines:
+            lines = lines[:maxlines]
+            truncatedlines = True
+
+        # Truncate each line if maxlength is set.
+        trimmedlines = []
+        for line in lines:
+            if len(line) > maxlength:
+                newline = ('{} ..truncated'.format(line[:maxlength]) +
+                           ' ({} chars)'.format(maxlength))
+                trimmedlines.append(newline)
+            else:
+                trimmedlines.append(line)
+        lines = trimmedlines
+
+        if truncatedlines:
+            lines.append('..truncated at {} lines.'.format(maxlines))
+
+        return '\n'.join(lines)

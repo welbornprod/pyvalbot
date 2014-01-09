@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""ircbot.py
+"""pyvalbot.py
+    Python Evaluation Bot (PyVal)
+    IRC Bot that accepts commands, mostly to evaluate and return the result
+    of python code.
 
-    Taken from https://gist.github.com/habnabit/5823693 for expirimental use.
+    Original Twisted basic bot code borrowed from github.com/habnabit.
 
-    -Christopher Welborn (original: github.com/habnabit)
+    -Christopher Welborn 2013-2014
 """
 
 
@@ -14,14 +17,14 @@ from os import getpid
 import os.path
 import sys
 
-
-#from datetime import datetime
+# Arg parsing
 from docopt import docopt
 
 # Irc stuff
 from twisted.internet import defer, endpoints, protocol, reactor, task
 from twisted.python import log
 from twisted.words.protocols import irc
+
  
 # Local stuff (Command Handler)
 from pyval_commands import AdminHandler, CommandHandler
@@ -50,7 +53,7 @@ USAGESTR = """{versionstr}
 """.format(versionstr=VERSIONSTR, script=SCRIPT)
 
 
-class MyFirstIRCProtocol(irc.IRCClient):
+class PyValIRCProtocol(irc.IRCClient):
  
     def __init__(self):
         self.argd = main_argd
@@ -73,6 +76,7 @@ class MyFirstIRCProtocol(irc.IRCClient):
         # Class to handle messages and commands.
         self.commandhandler = CommandHandler(defer_=defer,
                                              reactor_=reactor,
+                                             task_=task,
                                              adminhandler=self.admin)
 
     def connectionMade(self):
@@ -171,6 +175,8 @@ class MyFirstIRCProtocol(irc.IRCClient):
             command, sep, rest = message.lstrip('!').partition(' ')
             # Save this message, and build deferred with these args.
             self.admin.last_command = message
+            # If the function returns a deferred, it will be handled
+            # the same as non-deferred-returning functions.
             d = defer.maybeDeferred(func, rest.strip(), nick=nick)
 
         if self.admin.limit_rate:
@@ -180,10 +186,7 @@ class MyFirstIRCProtocol(irc.IRCClient):
                 print('Too busy, ignoring command: {}'.format(message))
                 return None
             # Keep track of how many requests are unanswered (handling).
-            self.admin.handlinglock.acquire()
-            self.admin.handlingcount += 1
-            self.admin.handlinglock.release()
-            #print('Request Count: {}'.format(self.admin.handlingcount))
+            self.admin.handling_increase()
 
         # Add error callbackfor func, the _show_error callback will turn the
         # error into a terse message first:
@@ -212,14 +215,14 @@ class MyFirstIRCProtocol(irc.IRCClient):
             self.msg(target, msg)
 
         # admin cmds have no msg sometimes, but still count as 'handling'.
-        if self.admin.handlingcount > 0:
-            self.admin.handlinglock.acquire()
-            self.admin.handlingcount -= 1
-            self.admin.handlinglock.release()
+        self.admin.handling_decrease()
+
         # increase the 'handled' count.
         self.admin.handled += 1
 
     def _sendMessage(self, msg, target, nick=None):
+        # Default handling delay for non-msg handling or low-load times.
+        timeout = 0.25
         if self.admin.handlingcount > 1:
             # Calculate delay needed based on current handling count.
             # Ends up being around 2 seconds per response.
@@ -227,24 +230,13 @@ class MyFirstIRCProtocol(irc.IRCClient):
             if msg:
                 timeout = 2 * self.admin.handlingcount
                 print('Delaying msg response for later: {}'.format(timeout))
-            else:
-                # admin commands have no msg sometimes, still 'handling'
-                # though. Don't delay commands that don't have a msg.
-                timeout = 0.25
-            reactor.callLater(timeout,
-                              self._handleMessage,
-                              msg,
-                              target,
-                              nick)
-        else:
-            # Handle response right away-ish.
-            # (give twisted a split-second to do other things like
-            #  increase the self.admin.handlingcount if needed)
-            reactor.callLater(0.25,
-                              self._handleMessage,
-                              msg,
-                              target,
-                              nick)
+
+        # Call the handle message function later-ish.
+        reactor.callLater(timeout,
+                          self._handleMessage,
+                          msg,
+                          target,
+                          nick)
 
     def _showError(self, failure):
         return failure.getErrorMessage()
@@ -263,10 +255,10 @@ class MyFirstIRCProtocol(irc.IRCClient):
         return defaultval
     
 
-class MyFirstIRCFactory(protocol.ReconnectingClientFactory):
+class PyValIRCFactory(protocol.ReconnectingClientFactory):
 
     def __init__(self, argd=None):
-        self.protocol = MyFirstIRCProtocol
+        self.protocol = PyValIRCProtocol
         self.protocol.argd = argd
         self.argd = argd
         
@@ -310,7 +302,7 @@ def main(reactor, description, argd):
     """ main-entry point for ircbot. """
     try:
         endpoint = endpoints.clientFromString(reactor, description)
-        factory = MyFirstIRCFactory(argd=argd)
+        factory = PyValIRCFactory(argd=argd)
         d = endpoint.connect(factory)
         d.addCallback(lambda protocol: protocol.deferred)
         return d
