@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os.path
 import unittest
 
-from pyval_commands import AdminHandler, CommandHandler
+from pyval_commands import AdminHandler, CommandHandler, PASTEBINIT_EXE
 
 
 class NoCommand(object):
@@ -101,6 +102,12 @@ class TestCommandFuncs(unittest.TestCase):
         self.assertEqual(self.cmdhandler.admin.blacklist, True,
                          msg='Failed to set attribute')
 
+    def test_pastebinit_exists(self):
+        """ pastebinit executable exists """
+
+        self.assertEqual(os.path.exists(PASTEBINIT_EXE), True)
+
+    @unittest.skipIf((not os.path.exists(PASTEBINIT_EXE)), 'no pastebinit exe')
     def test_print_topastebin(self):
         """ test print_topastebin() """
 
@@ -110,6 +117,10 @@ class TestCommandFuncs(unittest.TestCase):
         self.assertIsNone(noneresult, msg='empty arg should produce None')
 
         pastebinurl = pastebin('valid string')
+        self.assertIsNotNone(pastebinurl,
+                             msg=('print_topastebin() failed to give url: '
+                                  '\'{}\''.format(pastebinurl)))
+        # Make sure it is an actual url.
         goodurl = pastebinurl.startswith('http')
         self.assertEqual(goodurl, True,
                          msg='valid string should produce a paste bin url')

@@ -25,6 +25,10 @@ BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
 parse_true = lambda s: s.lower() in ('true', 'on', 'yes', '1')
 parse_false = lambda s: s.lower() in ('false', 'off', 'no', '0')
 
+# Location of pastebinit
+# TODO: needs to check other locations as well.
+PASTEBINIT_EXE = '/usr/bin/pastebinit'
+
 
 def simple_command(func):
     """ Simple decorator for simple commands.
@@ -811,7 +815,7 @@ class CommandFuncs(object):
         if not s:
             return None
 
-        cmdargs = ['/usr/bin/pastebinit',
+        cmdargs = [PASTEBINIT_EXE,
                    '-a', 'pyval',
                    '-b', 'http://paste.pound-python.org']
         try:
