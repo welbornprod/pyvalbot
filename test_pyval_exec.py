@@ -18,6 +18,7 @@ class TestExec(unittest.TestCase):
         self.assertEqual(os.path.exists(PYPYSANDBOX_EXE), True,
                          msg='Can\'t find pypy-sandbox, this will not work.')
 
+    @unittest.skipIf((not os.path.exists(PYPYSANDBOX_EXE)), 'no pypy-sandbox!')
     def test_execute_output(self):
         """ execute output and safe_output() works """
         
