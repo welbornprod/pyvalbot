@@ -1,37 +1,54 @@
-pyvalbot
-========
+PyVal
+=====
 
 Python Evaluation Bot for IRC (using PyPy-Sandbox, Twisted, and Python 2.7) 
 
 Requirements: 
 -------------
 
-**python-pypy.sandbox** or **python-pypy.translator.sandbox** package
-found in debian/ubuntu distros.
-this package provides the prebuilt pypy-sandbox executable 
-which is used to by pyval to run code safely.  
-pyval looks for pypy-sandbox in /usr/bin.
+- **python-pypy.sandbox** or **python-pypy.translator.sandbox**
+ package found in debian/ubuntu distros.
+ 
+ this package provides the prebuilt `pypy-sandbox` executable 
+ which is used to by pyval to run code safely.  
+ 
+ pyval looks for `pypy-sandbox` in `/usr/bin`.
+ 
 
-**pastebinit** package found in debian/ubuntu distros.
-cmd-line utility to pastebin content when the output limit for chat is exceeded
-as of right now, paste.pound-python.org is used.
-pyval looks for pastebinit in /usr/bin.
+- **pastebinit**
+ package found in debian/ubuntu distros.
+
+ cmd-line utility to pastebin content when the output limit for chat is exceeded
+ 
+ as of right now, http://paste.pound-python.org is used.
+ 
+ pyval looks for pastebinit in `/usr/bin`.
 
 
-**Twisted** python module. 
-(twisted.internet is used for the irc bot)
+- **Twisted** python module. 
 
-**Python 2.7**
+ `twisted.internet` is used for the irc bot.
+ 
+
+- **Python 2.7**
+
+ When Twisted supports **Python 3.x**, this project may be ported over.
 
 
 Notes:
 ------
 
-By default it connects to irc.freenode.net.
+By default it connects to `irc.freenode.net`.
 
-Joins '#pyval' on succesful connection. (channels can be set with cmdline args also)
+Joins `#pyval` on succesful connection. (channels can be set with cmdline args also)
 
-Nickname is set to 'pyval', which is registered to me so you will want to change it.
+Nickname is set to *pyval*, which is registered to me so you will want to change it.
+
+You are certainly free to take this code and start your own eval bot.
+If you change the source in any way, please change the name from **pyval** / **pyvalbot** to
+something else.
+
+If you want to contribute to the original **pyval**, you can clone this project and send pull requests.
 
 
 About:
@@ -48,23 +65,27 @@ pyval-exec and pypy-sandbox can read the entire content of any file in those dir
 
 This has not been fully tested in the public, it is only a starting point. I think bots can serve as good teaching/help tools. I would like to see a working bot in #python, because some times it's easier to show somebody the result of your answer instead of just showing them the answer. It makes things 'click' better with some people.
 
-There is an option to 'blacklist' certain strings. You can enable it by typing '!blacklist on' from irc, or to test it out through pyval-exec just use the --blacklist option. It basically blocks certain strings from being executed. It may be removed if this bot proves strong enough with just pypy-sandbox
+There is an option to 'blacklist' certain strings. You can enable it by typing '!blacklist on' from irc, or to test it out through pyval-exec just use the --blacklist option. It basically blocks certain strings from being executed. It may be removed if this bot proves strong enough with only the pypy-sandbox protection.
 
 
 Example Bot Usage:
 ------------------
 
-    ./pyvalbot.py --nick MyBot --channels mychan1,mychan2 --monitor --logfile
+To run the full pyval irc bot:
+
+    ./pyvalbot.py --nick MyBot --channels #mychan1,#mychan2
 
 
 Example PyValExec Usage:
 ------------------------
 
-The pyval-exec module can be ran by itself from the command line, to test the functionality of the sandbox itself.
+The pyval-exec module can be executed by itself from the command line.
 
-    ./pyval_exec.py "print('okay')"
-    result: (safe_output()):
-        okay
+To test the functionality of the sandbox without connecting to irc:
+
+    $./pyval_exec.py "print('okay')"
+     result: (safe_output()):
+         okay
     
 
 Example Chat Usage:
@@ -79,12 +100,15 @@ Example Chat Usage:
 Tests:
 ------
 
-Coverage is shotty, but if all tests pass then basic functionality should be okay.
+Coverage is not where it should be, but if all tests pass then basic functionality should be okay.
 As of right now, the tests confirm existence of required third-party executables,
-confirm pastebinit functionality, and basic code execution.
-Tests are unittest-module based, run them with your favorite test runner for python
-(pytest, nose, etc.).
+confirm `pastebinit` functionality, and basic code execution.
 
+Tests are `unittest`-based, run them with your favorite test runner for python
+(`pytest`, `nose`, etc.).
+
+I would recommend running these tests before trying to run the full bot or pyval-exec.
+Any configuration/dependency errors should show up right away and give you a hint about how to fix them.
 
 
 
