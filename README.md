@@ -8,6 +8,8 @@ Requirements:
 
 python-pypy.sandbox or python-pypy.translator.sandbox package found in debian/ubuntu distros. (looks for pypy-sandbox in /usr/bin)
 
+pastebinit package found in debian/ubuntu distros. (cmd-line utility to pastebin content when the output limit for chat is exceeded)
+
 Twisted python package.
 
 Python 2.7
@@ -62,6 +64,17 @@ Example Chat Usage:
         User1: How can I make a dict out the first and last items in a list of lists?
     PyValUser: !py {l[0]:l[-1] for l in [['a', 'b', 'c', 'd'], ['e', 'f', 'g', 'h']]}
         pyval: PyValUser, result: {'a': 'd', 'e': 'h'}
+
+
+
+Tests:
+------
+
+Coverage is shotty, but if all tests pass then basic functionality should be okay.
+As of right now, the tests confirm existence of required third-party executables,
+confirm pastebinit functionality, and basic code execution.
+Tests are unittest-module based, run them with your favorite test runner for python
+(pytest, nose, etc.).
 
 
 
