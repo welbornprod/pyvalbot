@@ -6,13 +6,22 @@ Python Evaluation Bot for IRC (using PyPy-Sandbox, Twisted, and Python 2.7)
 Requirements: 
 -------------
 
-python-pypy.sandbox or python-pypy.translator.sandbox package found in debian/ubuntu distros. (looks for pypy-sandbox in /usr/bin)
+**python-pypy.sandbox** or **python-pypy.translator.sandbox** package
+found in debian/ubuntu distros.
+this package provides the prebuilt pypy-sandbox executable 
+which is used to by pyval to run code safely.  
+pyval looks for pypy-sandbox in /usr/bin.
 
-pastebinit package found in debian/ubuntu distros. (cmd-line utility to pastebin content when the output limit for chat is exceeded)
+**pastebinit** package found in debian/ubuntu distros.
+cmd-line utility to pastebin content when the output limit for chat is exceeded
+as of right now, paste.pound-python.org is used.
+pyval looks for pastebinit in /usr/bin.
 
-Twisted python package.
 
-Python 2.7
+**Twisted** python module. 
+(twisted.internet is used for the irc bot)
+
+**Python 2.7**
 
 
 Notes:
