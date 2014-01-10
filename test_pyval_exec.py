@@ -10,15 +10,19 @@ import unittest
 
 from pyval_exec import ExecBox, PYPYSANDBOX_EXE
 
+PYPYSANDBOX_EXISTS = os.path.exists(PYPYSANDBOX_EXE)
+NOSANDBOX_MSG = ('ERROR: no pypy-sandbox executable found! '
+                 'pyvalbot will not work.')
+
 
 class TestExec(unittest.TestCase):
     
     def test_pypysandbox_exists(self):
         """ pypy-sandbox exists """
-        self.assertEqual(os.path.exists(PYPYSANDBOX_EXE), True,
-                         msg='Can\'t find pypy-sandbox, this will not work.')
+        self.assertEqual(PYPYSANDBOX_EXISTS, True,
+                         msg=NOSANDBOX_MSG)
 
-    @unittest.skipIf((not os.path.exists(PYPYSANDBOX_EXE)), 'no pypy-sandbox!')
+    @unittest.skipIf((not PYPYSANDBOX_EXISTS), NOSANDBOX_MSG)
     def test_execute_output(self):
         """ execute output and safe_output() works """
         

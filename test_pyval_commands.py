@@ -6,6 +6,10 @@ import unittest
 
 from pyval_commands import AdminHandler, CommandHandler, PASTEBINIT_EXE
 
+PASTEBINIT_EXISTS = os.path.exists(PASTEBINIT_EXE)
+NOPASTEBINIT_MSG = ('ERROR: no pastebinit executable found! '
+                    'print_topastebin() won\'t work!')
+
 
 class NoCommand(object):
 
@@ -105,9 +109,9 @@ class TestCommandFuncs(unittest.TestCase):
     def test_pastebinit_exists(self):
         """ pastebinit executable exists """
 
-        self.assertEqual(os.path.exists(PASTEBINIT_EXE), True)
+        self.assertEqual(PASTEBINIT_EXISTS, True, msg=NOPASTEBINIT_MSG)
 
-    @unittest.skipIf((not os.path.exists(PASTEBINIT_EXE)), 'no pastebinit exe')
+    @unittest.skipIf((not PASTEBINIT_EXISTS), NOPASTEBINIT_MSG)
     def test_print_topastebin(self):
         """ test print_topastebin() """
 
