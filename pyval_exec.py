@@ -28,6 +28,9 @@ import sys
 from pyval_util import __file__ as PYVAL_FILE
 
 SCRIPTNAME = os.path.split(sys.argv[0])[-1]
+# Location for pypy-sandbox,
+# TODO: needs to look for it in other locations as well.
+PYPYSANDBOX_EXE = os.path.join('/usr', 'bin', 'pypy-sandbox')
 
 
 class ExecBox(object):
@@ -137,12 +140,12 @@ class ExecBox(object):
                 self.inputstr = '{}\n'.format(self.inputstr)
 
         # Get locations for pypy-sandbox, sandbox dir, pyval_sandbox.
-        pypysandbox = os.path.join('/usr', 'bin', 'pypy-sandbox')
+
         parentdir = os.path.split(PYVAL_FILE)[0]
         sandboxdir = os.path.join(parentdir, 'pyval_sandbox')
         targetfile = '/tmp/pyval_sandbox.py'
         # Setup command args for Popen.
-        cmdargs = [pypysandbox,
+        cmdargs = [PYPYSANDBOX_EXE,
                    '--timeout={}'.format(self.timeout),
                    '--tmp={}'.format(sandboxdir),
                    targetfile]

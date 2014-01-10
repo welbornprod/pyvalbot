@@ -4,15 +4,20 @@
 """ test_pyval_exec.py
        Unit tests for pyval_exec
 """
-
+import os.path
 import sys
 import unittest
 
-from pyval_exec import ExecBox
+from pyval_exec import ExecBox, PYPYSANDBOX_EXE
 
 
 class TestExec(unittest.TestCase):
     
+    def test_pypysandbox_exists(self):
+        """ pypy-sandbox exists """
+        self.assertEqual(os.path.exists(PYPYSANDBOX_EXE), True,
+                         msg='Can\'t find pypy-sandbox, this will not work.')
+
     def test_execute_output(self):
         """ execute output and safe_output() works """
         
