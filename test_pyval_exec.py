@@ -22,7 +22,7 @@ class TestExec(unittest.TestCase):
         self.assertEqual(PYPYSANDBOX_EXISTS, True,
                          msg=NOSANDBOX_MSG)
 
-    @unittest.skipIf((not PYPYSANDBOX_EXISTS), NOSANDBOX_MSG)
+    @unittest.skipUnless(PYPYSANDBOX_EXISTS, NOSANDBOX_MSG)
     def test_execute_output(self):
         """ execute output and safe_output() works """
         

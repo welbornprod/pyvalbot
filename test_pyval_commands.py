@@ -111,7 +111,7 @@ class TestCommandFuncs(unittest.TestCase):
 
         self.assertEqual(PASTEBINIT_EXISTS, True, msg=NOPASTEBINIT_MSG)
 
-    @unittest.skipIf((not PASTEBINIT_EXISTS), NOPASTEBINIT_MSG)
+    @unittest.skipUnless(PASTEBINIT_EXISTS, NOPASTEBINIT_MSG)
     def test_print_topastebin(self):
         """ test print_topastebin() """
 
