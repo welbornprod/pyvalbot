@@ -26,6 +26,7 @@ import subprocess
 import sys
 
 from pyval_util import __file__ as PYVAL_FILE
+from pyval_util import VERSION
 
 SCRIPTNAME = os.path.split(sys.argv[0])[-1]
 # Location for pypy-sandbox,
@@ -415,10 +416,11 @@ def print_blacklist():
 def print_help(reason=None, show_options=True):
     """ Prints a little help message for cmdline options. """
 
-    usage_str = ('pyval_exec.py\n\n'
+    usage_str = ('PyVal Exec {ver}\n\n'
                  '    Usage:\n'
-                 '        pyval_exec.py -h | -b\n'
-                 '        pyval_exec.py evalstring\n')
+                 '        {script} -h | -b\n'
+                 '        {script} evalstring\n').format(ver=VERSION,
+                                                         script=SCRIPTNAME)
     optionstr = ('    Options:\n'
                  '        evalstring          : String to evaluate/execute.\n'
                  '        -b,--blacklist      : Use blacklist (testing).\n'
