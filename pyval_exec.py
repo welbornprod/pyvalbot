@@ -417,14 +417,15 @@ def print_blacklist():
 def print_help(reason=None, show_options=True):
     """ Prints a little help message for cmdline options. """
 
-    usage_str = ('{name} v. {ver}\n\n'
-                 '    Usage:\n'
-                 '        {script} -h | -b\n'
-                 '        {script} evalstring\n').format(name=NAME,
-                                                         ver=VERSION,
-                                                         script=SCRIPTNAME)
+    usage_str = str.format(('{name} v. {ver}\n\n'
+                            '    Usage:\n'
+                            '        {script} -h | -p | -v\n'
+                            '        {script} [-b] [-d] [-r] evalcode\n'),
+                           name=NAME,
+                           ver=VERSION,
+                           script=SCRIPTNAME)
     optionstr = ('    Options:\n'
-                 '        evalstring          : String to evaluate/execute.\n'
+                 '        evalcode            : Code to evaluate/execute.\n'
                  '        -b,--blacklist      : Use blacklist (testing).\n'
                  '        -d,--debug          : Prints extra info before,\n'
                  '                              during, and after execution.\n'
