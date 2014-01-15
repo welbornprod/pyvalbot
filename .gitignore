@@ -2,3 +2,4 @@
 *.lst
 pyval_pid
 .coverage
+release
