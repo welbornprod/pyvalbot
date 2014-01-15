@@ -28,6 +28,7 @@ import sys
 from pyval_util import __file__ as PYVAL_FILE
 from pyval_util import VERSION
 
+NAME = 'PyValExec'
 SCRIPTNAME = os.path.split(sys.argv[0])[-1]
 # Location for pypy-sandbox,
 # TODO: needs to look for it in other locations as well.
@@ -416,10 +417,11 @@ def print_blacklist():
 def print_help(reason=None, show_options=True):
     """ Prints a little help message for cmdline options. """
 
-    usage_str = ('PyVal Exec {ver}\n\n'
+    usage_str = ('{name} v. {ver}\n\n'
                  '    Usage:\n'
                  '        {script} -h | -b\n'
-                 '        {script} evalstring\n').format(ver=VERSION,
+                 '        {script} evalstring\n').format(name=NAME,
+                                                         ver=VERSION,
                                                          script=SCRIPTNAME)
     optionstr = ('    Options:\n'
                  '        evalstring          : String to evaluate/execute.\n'
@@ -452,11 +454,18 @@ def main(args):
                                    ('-d', '--debug'),
                                    ('-p', '--printblacklist'),
                                    ('-r', '--raw'),
+                                   ('-v', '--version'),
                                    ))
     if argd['--help']:
         # Catch help arg.
         print_help()
         return 0
+
+    elif argd['--version']:
+        # Catch version arg.
+        print('{} v. {}'.format(NAME, VERSION))
+        return 0
+
     elif argd['--printblacklist']:
         # Catch blacklist printer.
         print_blacklist()
