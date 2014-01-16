@@ -425,13 +425,24 @@ def print_help(reason=None, show_options=True):
                            ver=VERSION,
                            script=SCRIPTNAME)
     optionstr = ('    Options:\n'
-                 '        evalcode            : Code to evaluate/execute.\n'
+                 '        evalcode            : Code to evaluate/execute,\n'
+                 '                              or a file to read code from.\n'
                  '        -b,--blacklist      : Use blacklist (testing).\n'
                  '        -d,--debug          : Prints extra info before,\n'
                  '                              during, and after execution.\n'
                  '        -h,--help           : Show this message.\n'
                  '        -p,--printblacklist : Print blacklisted strings.\n'
-                 '        -r,--raw            : Show unsafe, raw output.\n')
+                 '        -r,--raw            : Show unsafe, raw output.\n\n'
+                 '    Notes:\n'
+                 '        If a filename is passed, the name __main__ is not \n'
+                 '        set. So it may not run as expected.\n\n'
+                 '        It will run each statement in the file, but:\n'
+                 '            if __name__ == \'__main__\' will be False.\n\n'
+                 '        You can explicitly bypass this, but it may be\n'
+                 '        better to write a specific sandbox-friendly\n'
+                 '        script to test things out.\n'
+                 )
+
     if reason:
         print('\n{}\n'.format(reason))
     print(usage_str)
@@ -475,6 +486,8 @@ def main(args):
     if args:
         # Set eval string.
         evalstr = ' '.join(args)
+        # Filename will be set if evalstr is a valid filename, before executing
+        filename = None
     else:
         print_help('No string to evaluate!', show_options=False)
         return 1
@@ -482,7 +495,19 @@ def main(args):
     # Get pyval_exec.debug setting from cmdline.
     debug = argd['--debug']
 
-    print('Content: {}\n'.format(evalstr))
+    if os.path.isfile(evalstr):
+        # This is a filename, load the contents from it.
+        filename = evalstr
+        try:
+            with open(filename, 'r') as fread:
+                evalstr = fread.read()
+        except (IOError, OSError) as exio:
+            print('\nError reading from file: {}\n{}'.format(filename, exio))
+            return 1
+        print('Loaded contents from file: {}\n'.format(filename))
+    else:
+        print('Content: {}\n'.format(evalstr))
+
     e = ExecBox(evalstr)
     e.debug = debug
     try:
