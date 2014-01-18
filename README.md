@@ -38,11 +38,20 @@ Requirements:
 Notes:
 ------
 
-By default it connects to `irc.freenode.net`.
+Please read the <a href='#tests'>Tests</a> section, it will help you to make sure that your system can
+even run PyVal.
 
-Joins `#pyval` on succesful connection. (channels can be set with cmdline args also)
+The project page for PyVal is http://welbornprod.com/projects/pyval.
+The info in this README and the project page may not always be in sync.
+
+By default the bot connects to `irc.freenode.net`.
+
+The bot joins `#pyval` on succesful connection. (channels can be set with `--channels` also, 
+see <a href='#example-bot-usage'>Example Bot Usage</a>.)
 
 Nickname is set to *pyval*, which is registered to me so you will want to change it.
+You can set the nick with the `--nick` command-line option.
+(see <a href='#example-bot-usage'>Example Bot Usage</a>.)
 
 You are certainly free to take this code and start your own eval bot.
 If you change the source in any way, please change the name from **pyval** / **pyvalbot** to
@@ -74,6 +83,11 @@ Example Bot Usage:
 To run the full pyval irc bot:
 
     ./pyvalbot.py --nick MyBot --channels #mychan1,#mychan2
+    
+There is also a symlink setup (`pyval`), to view all options you can do this:
+
+    ./pyval --help
+
 
 
 Example PyValExec Usage:
@@ -84,8 +98,66 @@ The pyval-exec module can be executed by itself from the command line.
 To test the functionality of the sandbox without connecting to irc:
 
     $./pyval_exec.py "print('okay')"
-     result: (safe_output()):
+     Content: print('okay')
+     
+     Results: (safe_output()):
          okay
+
+Notice the `safe_output()`, it means that newlines are escaped and long output is truncated.
+
+         
+PyValExec also has a symlink, and an option to view raw output with `--raw`:
+
+    $./pyvalexec "print('\\\\n'.join([str(i) for i in range(3)]))" -r
+    Content: print('\\n'.join([str(i) for i in range(3)]))
+    Results (raw output):
+    0
+    1
+    2
+
+PyValExec interprets `\\n` as python's `\n`, but the shell needs escaping too.
+
+Hince the need for `\\\\n` just to get a newline. Which PyValExec receives as `\\n` and uses
+as Python's `\n`. If you send PyValExec a `\n`, it will insert an actual newline
+(as if you pressed Enter while typing the code).
+
+
+Running scripts with PyValExec:
+-------------------------------
+
+PyValExec can load code from a file if you pass it a file name instead of code:
+
+    $ ./pyvalexec myscriptfile.py
+    # don't forget to use -r or --raw to get the raw output instead of safe_output().
+
+
+The `\n` problem goes away when reading from a file, and all forms of `\n` are treated
+exactly as Python would treat them.
+
+There is a difference between Python and PyValExec when loading script files,
+`__name__` is not set to `'__main__'`.
+
+When a script is ran with PyValExec, `__name__` is set to `'__pyval__'`.
+
+This allows you to do things like this:
+
+    import sys
+    if __name__ == '__main__':
+        print('This script is not allowed to run outside of the PyValExec sandbox!')
+        sys.exit(1)
+    elif __name__ == '__pyval__':
+        print('We are in the sandbox, everything is okay.')
+    else:
+        print('This script is not meant to be imported!')
+        sys.exit(1)
+
+
+Or just:
+
+    import os
+    if __name__ != '__pyval__':
+        print('This script is designed to run in PyValExec's sandbox!')
+        sys.exit(1)
     
 
 Example Chat Usage:
@@ -93,9 +165,35 @@ Example Chat Usage:
 
         User1: How can I make a dict out the first and last items in a list of lists?
     PyValUser: !py {l[0]:l[-1] for l in [['a', 'b', 'c', 'd'], ['e', 'f', 'g', 'h']]}
-        pyval: PyValUser, result: {'a': 'd', 'e': 'h'}
+        pyval: PyValUser, {'a': 'd', 'e': 'h'}
 
+Advanced Chat Usage:
+--------------------
 
+To insert newlines in more advanced code:
+
+    PyValUser: !py x = 5\nfor i in range(x):\n    print(str(i))
+        pyval: PyValUser,  0\n1\n2\n3\n4
+`print()` must be used because this is not simple `eval()` code. Even with lines like `x=5\nprint(x)`.
+
+To escape newlines in more advanced code:
+
+    PyValUser: !py print('\\n'.join(['test', 'this']))
+        pyval: PyValUser, test\nthis
+
+To get long output (there is a time limit on executing code):
+
+    PyValUser: !py for i in range(65):\n    print('test' * 55)
+        pyval: cjwelborn, testtesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttest
+               full: http://paste.pound-python.org/show/AcDrJg9NszeyXmxcOKBI/
+
+Long output is sent to a pastebin, but even then it is truncated.
+You can get up to 65 lines of output, each line must not exceed ~240 characters.
+
+This limit is to ease the bandwidth used on the pastebin site. I don't want to be responsible for the abuse of
+pastebins.
+
+If you are trying to evaluate honest code in the sandbox and must have the full output, then you should probably download PyVal and run PyValExec yourself with `--raw` on your own machine.
 
 Tests:
 ------
