@@ -15,8 +15,17 @@
     Run `pyval_exec.py -h` for options.
     -Christopher Welborn 2013
 
-    Killer Strings (known to crash python or cause problems):
+    Killer Strings,
+    known to crash python or cause problems, ignore the '# noqa'.
+    eval() will fail with these strings in a normal interpreter:
+    SegFault (crashes python/pypy):
     (lambda fc=(lambda n: [c for c in ().__class__.__bases__[0].__subclasses__() if c.__name__ == n][0]):fc("function")(fc("code")(0,0,0,0,"KABOOM",(),(),(),"","",0,""),{})())() # noqa
+
+    MemoryError (not in PyPy though):
+    ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) # noqa
+
+    Even though these errors might occur, it doesn't mean the bot will die.
+    Code is evaluated in a subprocess and is timed. It will fail gracefully.
 """
 
 from tempfile import SpooledTemporaryFile

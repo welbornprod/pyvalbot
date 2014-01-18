@@ -24,7 +24,7 @@ import sys
 
 
 NAME = 'pyval_sandbox.py'
-VERSION = '1.0.0'
+VERSION = '1.0.1'
 VERSIONSTR = '{} v. {}'.format(NAME, VERSION)
 
 
@@ -35,6 +35,9 @@ modules = lambda: 'modules are: {}'.format(', '.join(whitelist_modules))
 # Fixed globals()/locals() for Interpreter.
 dumblocals = {'__builtins__': None,
               'modules': modules,
+              # quick way to test if code is running in the sandbox.
+              # if __name__ == '__pyval__'
+              '__name__': '__pyval__',
               }
 for okmodule in whitelist_modules:
     dumblocals[okmodule] = __import__(okmodule)
