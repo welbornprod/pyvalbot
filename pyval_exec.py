@@ -132,18 +132,25 @@ class ExecBox(object):
                 return True
         return False
 
-    def _exec(self, pipesend=None):
+    def _exec(self, pipesend=None, stringmode=True):
         """ Execute actual code using pypy-sandbox/pyval_sandbox combo.
             This method does not blacklist anything. 
             It runs whatever self.inputstr is set to.
+
+            Arguments:
+                pipesend    :  multiprocessing pipe to send output to.
+                stringmode  :  fixes newlines so that can be used from
+                               cmdline/irc-chat.
+                               default: True
         """
         if not self.inputstr:
             self.error_return('No source.')
         # let the user use '\n' (\\n) as newlines, and '\\n' ('\\\\n') as
         # escaped newline characters.
-        self.inputstr = self.inputstr.replace('\\\\n', '//n')
-        self.inputstr = self.inputstr.replace('\\n', '\n')
-        self.inputstr = self.inputstr.replace('//n', '\\n')
+        if stringmode:
+            self.inputstr = self.inputstr.replace('\\\\n', '//n')
+            self.inputstr = self.inputstr.replace('\\n', '\n')
+            self.inputstr = self.inputstr.replace('//n', '\\n')
         # Add shortcut for print, ?(value)
         self.inputstr = self.inputstr.replace('?(', 'print(')
         if ('\n' in self.inputstr) and (not self.inputstr.endswith('\n')):
@@ -181,8 +188,23 @@ class ExecBox(object):
         self.output = self.lasterror = str(s)
         return self.output
 
-    def execute(self, evalstr=None, raw_output=False, use_blacklist=False):
-        """ Execute code inside the pypy sandbox/pyval_sandbox. """
+    def execute(self, **kwargs):
+        """ Execute code inside the pypy sandbox/pyval_sandbox.
+            Keyword Arguments:
+                evalstr        : String to evaluate. (or file contents)
+                raw_output     : Use raw output instead of safe_output().
+                                 Default: False
+                stringmode     : Fix newlines so they can be used with
+                                 cmdline/irc-chat.
+                                 Default: True
+                use_blacklist  : Enable the blacklist (forbidden strings).
+                                 Default: False
+        """
+
+        evalstr = kwargs.get('evalstr', None)
+        raw_output = kwargs.get('raw_output', False)
+        use_blacklist = kwargs.get('use_blacklist', False)
+        stringmode = kwargs.get('stringmode', True)
 
         # Reset last error.
         self.lasterror = None
@@ -204,9 +226,14 @@ class ExecBox(object):
             if badinputmsg:
                 return self.error_return(badinputmsg)
 
+        # Build kwargs for _exec.
+        execargs = {'stringmode': stringmode}
+
         # Actually execute it with fingers crossed.
         try:
-            result = self.timed_call(self._exec, timeout=self.timeout)
+            result = self.timed_call(self._exec,
+                                     kwargs=execargs,
+                                     timeout=self.timeout)
             self.output = str(result)
         except TimedOut:
             self.output = 'Error: Operation timed out.'
@@ -510,17 +537,20 @@ def main(args):
         try:
             with open(filename, 'r') as fread:
                 evalstr = fread.read()
+            stringmode = False
         except (IOError, OSError) as exio:
             print('\nError reading from file: {}\n{}'.format(filename, exio))
             return 1
         print('Loaded contents from file: {}\n'.format(filename))
     else:
+        stringmode = True
         print('Content: {}\n'.format(evalstr))
 
     e = ExecBox(evalstr)
     e.debug = debug
     try:
         output = e.execute(raw_output=argd['--raw'],
+                           stringmode=stringmode,
                            use_blacklist=argd['--blacklist'])
     except TimedOut:
         print('\nOperation timed out. ({}s)'.format(e.timeout))
