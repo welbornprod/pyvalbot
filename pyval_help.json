@@ -1,0 +1,122 @@
+{
+"admin": {
+    "adminadd": {
+        "args": "<nick>", 
+        "desc": "Add an administrator by nick."
+        },
+    "adminhelp": {
+        "args": "[cmd]",
+        "desc": "Show help for an admin command, or list all cmds."
+        },
+    "adminlist": {
+        "args": null,
+        "desc": "List all current administrators."
+        },
+    "adminreload": {
+        "args": null,
+        "desc": "Reload admins list from disk."
+        },
+    "adminrem": {
+        "args": "<nick>",
+        "desc": "Shortcut for adminremove."
+        },
+    "adminremove": {
+        "args": "<nick>",
+        "desc": "Remove an administrator by nick."
+        },
+    "ban": {
+        "args": "<nick>",
+        "desc": "Ban a nick from using the bot."
+        },
+    "banned": {
+        "args": null,
+        "desc": "List all currently banned nicks."
+        },
+    "blacklist": {
+        "args": "[on, off, ?]",
+        "desc": "Change pyvalexec's blacklist option, or  show the current value."
+        },
+    "channels": {
+        "args": null,
+        "desc": "Show current channels that pyval is in."
+        },
+    "getattr": {
+        "args": "<attribute>",
+        "desc": "Retrieve the value of a pyval CommandFuncs  attribute. (ex: admins.channels)"
+            },
+    "identify": {
+        "args": "<password>",
+        "desc": "Identify pyval with NickServ."
+        },
+    "join": {
+        "args": "<channels>",
+        "desc": "Join a channel or multiple channels (using a comma-separated list)"
+        },
+    "limitrate": {
+        "args": "[on, off, ?]",
+        "desc": "Change pyval's limitrate option, or show the current value."
+        },
+    "msg": {
+        "args": "<target> <message>",
+        "desc": "Send a message to a nick or channel as pyvalbot."
+        },
+    "part": {
+        "args": "<channels>",
+        "desc": "Part/Leave a channel or multiple channels (using a comma-separated list)"
+        },
+    "partall": {
+        "args": null,
+        "desc": "Part/Leave all current channels."
+        },
+    "say": {
+        "args": "<message>",
+        "desc": "Make pyvalbot respond to you with a message."
+        },
+    "sendline": {
+        "args": "<data>",
+        "desc": "Send a raw line to the irc server as pyvalbot."
+        },
+    "setattr": {
+        "args": "<attribute> <val>",
+        "desc": "Set a pyval CommandFuncs attribute. (ex: !setattr admin.blacklist True)"
+        },
+    "shutdown": {
+        "args": null,
+        "desc": "Shut pyval down cleanly, disconnect and kill the process."
+        },
+    "stats": {
+        "args": null,
+        "desc": "Show handled-count (number of commands handled), and uptime (time since startup)"
+        },
+    "unban": {
+        "args": "<nick>",
+        "desc": "Remove a nick from the banned list."
+        }
+    },
+"user": {
+    "help": {
+        "args": "[cmdname]",
+        "desc": "list commands or show command help."
+        },
+    "py": {
+        "args": "<python code>",
+        "desc": "evaluates python code through pypy-sandbox."
+        },
+    "python": {
+        "args": "<python code>",
+        "desc": "evaluates python code through pypy-sandbox."
+        },
+    "pyval": {
+        "args": "<message>",
+        "desc": "say something to the pyval operator."
+        },
+    "time": {
+        "args": null,
+        "desc": "shows current time for pyval."
+        },
+    "uptime": {
+        "args": null,
+        "desc": "show uptime for pyval."
+        }
+    }
+}
