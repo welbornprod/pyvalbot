@@ -10,6 +10,9 @@ PASTEBINIT_EXISTS = os.path.exists(PASTEBINIT_EXE)
 NOPASTEBINIT_MSG = ('ERROR: no pastebinit executable found! '
                     'print_topastebin() won\'t work!')
 
+# Only load admin help once, and save it here.
+ADMINHELP = None
+
 
 class NoCommand(object):
 
@@ -68,10 +71,16 @@ class TestCommandFuncs(unittest.TestCase):
         return isinstance(o, NoCommand)
 
     def setUp(self):
-        self.adminhandler = AdminHandler(nick='testnick')
+        """ Setup each test with an admin/command handler """
+        global ADMINHELP
+        if ADMINHELP:
+            self.adminhandler = AdminHandler(nick='testnick',
+                                             help_info=ADMINHELP)
+        else:
+            self.adminhandler = AdminHandler(nick='testnick')
+            ADMINHELP = self.adminhandler.help_info
         self.adminhandler.admins.append('testadmin')
         self.cmdhandler = CommandHandler(adminhandler=self.adminhandler)
-        #self.commands = self.commandhandler.commands
 
     def test_admin_getattr(self):
         """ admin command !getattr works """

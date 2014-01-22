@@ -88,7 +88,7 @@ class AdminHandler(object):
 
     """ Handles admin functions like bans/admins/settings. """
 
-    def __init__(self, nick=None):
+    def __init__(self, nick=None, help_info=None):
         # Set startup time.
         self.starttime = datetime.now()
         # Current channels the bot is in.
@@ -121,9 +121,11 @@ class AdminHandler(object):
         self.handled = 0
         # Help dict {'user': {'cmd': {'args': null, {'desc': 'mycommand'}}},
         #            'admin': <same as 'user' key> }
-        self.help_info = self.load_help()
+        # Tests can pass a preloaded help_info in.
+        self.help_info = help_info if help_info else self.load_help()
         if self.help_info:
-            print('\nHelp info loaded: {}'.format(HELPFILE))
+            if (not help_info):
+                print('\nHelp info file loaded: {}'.format(HELPFILE))
         else:
             print('\nNo help commands will be available.')
 
