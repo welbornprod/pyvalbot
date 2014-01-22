@@ -9,6 +9,7 @@
     -Christopher Welborn (original ircbot.py from github.com/habnabit)
 """
 
+import json
 import os
 from sys import version as sysversion
 from datetime import datetime
@@ -20,6 +21,7 @@ from pyval_util import NAME, VERSION
 
 ADMINFILE = '{}_admins.lst'.format(NAME.lower().replace(' ', '-'))
 BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
+HELPFILE = '{}_help.json'.format(NAME.lower().replace(' ', '-'))
 
 # Parses common string for True/False values.
 parse_true = lambda s: s.lower() in ('true', 'on', 'yes', '1')
@@ -62,6 +64,26 @@ def basic_command(func):
     return inner
 
 
+def load_json_object(filename):
+    """ Loads an object from a json file,
+        returns {} on failure.
+    """
+    try:
+        with open(filename, 'r') as fjson:
+            rawjson = fjson.read()
+    except (OSError, IOError) as exio:
+        print('\nError loading json from: {}\n{}'.format(filename, exio))
+        return {}
+
+    try:
+        jsonobj = json.loads(rawjson)
+    except Exception as ex:
+        print('\nError parsing json from: {}\n{}'.format(filename, ex))
+        return {}
+
+    return jsonobj
+
+
 class AdminHandler(object):
 
     """ Handles admin functions like bans/admins/settings. """
@@ -69,12 +91,14 @@ class AdminHandler(object):
     def __init__(self, nick=None):
         # Set startup time.
         self.starttime = datetime.now()
+        # Current channels the bot is in.
+        self.channels = []
         # Set command character and nick.
         self.command_char = '!'
         self.nickname = nick or 'pyval'
         # Whether or not to use PyVal.ExecBoxs blacklist.
         self.blacklist = False
-        # Monitoring options.
+        # Monitoring options. (privmsgs, all recvline, include ips)
         self.monitor = False
         self.monitordata = False
         self.monitorips = False
@@ -95,6 +119,13 @@ class AdminHandler(object):
         self.handlinglock = None
         # Number of handled requests
         self.handled = 0
+        # Help dict {'user': {'cmd': {'args': null, {'desc': 'mycommand'}}},
+        #            'admin': <same as 'user' key> }
+        self.help_info = self.load_help()
+        if self.help_info:
+            print('\nHelp info loaded: {}'.format(HELPFILE))
+        else:
+            print('\nNo help commands will be available.')
 
     def admins_add(self, nick):
         """ Add an admin to the list and save it. """
@@ -115,9 +146,11 @@ class AdminHandler(object):
         """ Load admins from list. """
 
         if not os.path.exists(ADMINFILE):
-            print('No admins list.')
+            print('No admins list, defaults will be used.')
+            # cj is the default admin.
             return ['cjwelborn']
 
+        # admin is cj until the admins file says otherwise.
         admins = ['cjwelborn']
         try:
             with open('pyval_admins.lst') as fread:
@@ -226,6 +259,11 @@ class AdminHandler(object):
         self.handlinglock.acquire()
         self.handlingcount += 1
         self.handlinglock.release()
+
+    def load_help(self):
+        """ Load help from json file. """
+
+        return load_json_object(HELPFILE)
 
 
 class CommandHandler(object):
@@ -336,14 +374,16 @@ class CommandFuncs(object):
         self.reactor = kwargs.get('reactor_', None)
         self.task = kwargs.get('task_', None)
 
-        self.help_info = self.build_help()
-
     # Commands (must begin with cmd)
     @basic_command
     def admin_adminadd(self, rest):
         """ Add an admin to the list. """
         return self.admin.admins_add(rest)
-    
+
+    def admin_adminhelp(self, rest, nick=None):
+        """ Build list of admin commands. """
+        return self.get_help(role='admin', cmdname=rest, usernick=None)
+
     @simple_command
     def admin_adminlist(self):
         """ List current admins. """
@@ -365,13 +405,6 @@ class CommandFuncs(object):
     def admin_adminremove(self, rest):
         """ Remove an admin from the handlers list. """
         return self.admin.admins_remove(rest)
-
-    @basic_command
-    def admin_adminhelp(self, rest):
-        """ Build list of admin commands. """
-        admincmds = [a for a in dir(self) if a.startswith('admin_')]
-        admincmdnames = [s.split('_')[1] for s in admincmds]
-        return 'commands: {}'.format(', '.join(sorted(admincmdnames)))
 
     @basic_command
     def admin_ban(self, rest):
@@ -405,6 +438,11 @@ class CommandFuncs(object):
                 return 'invalid value for blacklist option (true/false).'
         return 'blacklist enabled: {}'.format(self.admin.blacklist)
 
+    @simple_command
+    def admin_channels(self):
+        """ Return a list of current channels for the bot. """
+        return 'current channels: {}'.format(', '.join(self.admin.channels))
+
     @basic_command
     def admin_getattr(self, rest):
         """ Return value for attribute. """
@@ -435,10 +473,31 @@ class CommandFuncs(object):
     @basic_command
     def admin_join(self, rest):
         """ Join a channel as pyval. """
-        print('Trying to join: {}'.format(rest))
-        # return {'funcname': 'sendLine',
-        #        'args': ['JOIN {}'.format(rest)]}
-        self.admin.sendLine('JOIN {}'.format(rest))
+        if ',' in rest:
+            # multiple channel names.
+            chans = [s.strip() for s in rest.split(',')]
+        else:
+            # single channel.
+            chans = [rest]
+
+        alreadyin = []
+        for chan in chans:
+            if not chan.startswith('#'):
+                chan = '#{}'.format(chan)
+
+            if chan in self.admin.channels:
+                # already in that channel, send a msg in a moment.
+                alreadyin.append(chan)
+            else:
+                print('Joining: {}'.format(chan))
+                self.admin.sendLine('JOIN {}'.format(chan))
+
+            if alreadyin:
+                chanstr = 'channel' if len(alreadyin) == 1 else 'channels'
+                return 'Already in {}: {}'.format(chanstr,
+                                                  ', '.join(alreadyin))
+        # Joined channels, no response is sent
+        # (you can look at the log/stdout)
         return None
 
     @basic_command
@@ -474,9 +533,41 @@ class CommandFuncs(object):
     @basic_command
     def admin_part(self, rest):
         """ Leave a channel as pyval. """
-        print('Parting from: {}'.format(rest))
-        self.admin.sendLine('PART {}'.format(rest))
+        if ',' in rest:
+            # multichannel
+            chans = [s.strip() for s in rest.split(',')]
+        else:
+            # single channel.
+            chans = [rest]
+
+        notinchans = []
+        for chan in chans:
+            if not chan.startswith('#'):
+                chan = '#{}'.format(chan)
+
+            if chan in self.admin.channels:
+                print('Parting from: {}'.format(chan))
+                self.admin.sendLine('PART {}'.format(chan))
+            else:
+                # not in that channel, send a msg in a moment.
+                notinchans.append(chan)
+
+        if notinchans:
+            chanstr = 'channel' if len(notinchans) == 1 else 'channel'
+            return 'Not in {}: {}'.format(chanstr, ', '.join(notinchans))
+
+        # parted channel(s) no response is sent.
+        # (you can check the log/stdout)
         return None
+
+    @simple_command
+    def admin_partall(self):
+        """ Part all current channels.
+            The only way to re-join is to send a private msg to pyval,
+            or shutdown and restart.
+        """
+
+        return self.admin_part(','.join(self.admin.channels))
 
     @basic_command
     def admin_say(self, rest):
@@ -558,61 +649,9 @@ class CommandFuncs(object):
         else:
             return 'unable to unban: {}'.format(rest)
 
-    def build_help(self):
-        """ Builds a dict with {cmdname: usage string} """
-        # Build help information.
-        help_info = {
-            'help': ('help [cmdname]',
-                     'list commands or show command help.)'),
-            'py': ('py <python code>',
-                   'evaluates python code through pypy-sandbox.'),
-            'python': ('python <python code>',
-                       'evaluates python code through pypy-sandbox.'),
-            'pyval': ('pyval <your message>',
-                      'say something to the pyval operator.'),
-            'time': ('time',
-                     'shows current time for pyval.'),
-            'uptime': ('uptime',
-                       'show uptime for pyval.'),
-        }
-
-        return help_info
-
-    @basic_command
-    def cmd_help(self, rest):
+    def cmd_help(self, rest, nick=None):
         """ Returns a short help string. """
-
-       # Handle python style help (still only works for pyval cmds)
-        if rest and '(' in rest:
-            # Convert 'help(test)' into 'help test', or 'help()' into 'help '
-            rest = rest.replace('(', ' ')
-            rest = rest.strip(')')
-            # Remove " and '
-            if ("'" in rest) or ('"' in rest):
-                rest = rest.replace('"', '').replace("'", '')
-            # Convert 'help ' into 'help'
-            rest = rest.strip()
-            # Convert 'help ' into None so it can be interpreted as plain help.
-            if rest == 'help':
-                rest = None
-            else:
-                # Convert 'help blah' into 'blah'
-                rest = ' '.join(rest.split()[1:])
-
-        if rest:
-            # Look for cmd name in help_info.
-            rest = rest.lower()
-            if rest in self.help_info.keys():
-                usage, desc = self.help_info[rest]
-                return '{}{}, ({})'.format(self.admin.command_char,
-                                           usage,
-                                           desc)
-            else:
-                return 'no command named: {}'.format(rest)
-        else:
-            # All commands
-            cmds = self.get_commands()
-            return 'commands: {}'.format(', '.join(cmds))
+        return self.get_help(role='user', cmdname=rest, usernick=nick)
 
     @basic_command
     def cmd_py(self, rest):
@@ -703,11 +742,11 @@ class CommandFuncs(object):
     def cmd_pyval(self, rest, nick=None):
         """ Someone addressed 'pyval' directly. """
         if rest.replace(' ', '').replace('\t', ''):
-            print('Message: {} - {}'.format(nick, rest))
+            print('Message from {}: {}'.format(nick, rest))
             # Don't reply to this valid msg.
             return None
         else:
-            return 'try !help or  !py help'
+            return 'try !help, !py help, or !help py'
 
     @basic_command
     def _cmd_saylater(self, rest):
@@ -748,12 +787,71 @@ class CommandFuncs(object):
         verstr = '{}, {}, {}'.format(pyvalver, pyver, gccver)
         return verstr
 
-    def get_commands(self):
+    def get_commands(self, role='user', usernick=None):
         """ Returns a list of available user commands. """
-        # Not dynamically generating list right now, maybe later when
-        # commands are final and stable.
-        # This is a list of 'acceptable' commands right now.
-        return ['help', 'py', 'python', 'pyval', 'uptime', 'version']
+        if role == 'user':
+            # Not dynamically generating list right now, maybe later when
+            # commands are final and stable.
+            # This is a list of 'acceptable' commands right now.
+            if usernick and (usernick in self.admin.admins):
+                # hint an admin user towards the adminhelp command.
+                usercmds = ['adminhelp']
+            else:
+                usercmds = []
+            usercmds.extend(['help', 'py', 'python',
+                             'pyval', 'uptime', 'version'])
+            return usercmds
+
+        else:
+            # Dynamically generate a list of admin commands.
+            admincmds = [a for a in dir(self) if a.startswith('admin_')]
+            admincmdnames = [s.split('_')[1] for s in admincmds]
+            return sorted(admincmdnames)
+
+    def get_help(self, role='user', cmdname=None, usernick=None):
+        """ Retrieve help for a command. """
+
+        if not self.admin.help_info:
+            return 'help isn\'t available right now.'
+
+       # Handle python style help (still only works for pyval cmds)
+        if cmdname and '(' in cmdname:
+            # Convert 'help(test)' into 'help test', or 'help()' into 'help '
+            cmdname = cmdname.replace('(', ' ')
+            cmdname = cmdname.strip(')')
+            # Remove " and '
+            if ("'" in cmdname) or ('"' in cmdname):
+                cmdname = cmdname.replace('"', '').replace("'", '')
+            # Convert 'help ' into 'help'
+            cmdname = cmdname.strip()
+            # Convert 'help ' into None so it can be interpreted as plain help.
+            if cmdname == 'help':
+                cmdname = None
+            else:
+                # Convert 'help blah' into 'blah'
+                cmdname = ' '.join(cmdname.split()[1:])
+
+        if cmdname:
+            # Look for cmd name in help_info.
+            cmdname = cmdname.lower()
+            if cmdname in self.admin.help_info[role]:
+                cmdhelp = self.admin.help_info[role][cmdname]
+                if cmdhelp['args']:
+                    return '{}{} {}: {}'.format(self.admin.command_char,
+                                                cmdname,
+                                                cmdhelp['args'],
+                                                cmdhelp['desc'])
+                else:
+                    return '{}{}: {}'.format(self.admin.command_char,
+                                             cmdname,
+                                             cmdhelp['desc'])
+            else:
+                return 'no {} command named: {}'.format(role, cmdname)
+
+        else:
+            # All commands
+            cmds = self.get_commands(role=role, usernick=usernick)
+            return '{} commands: {}'.format(role, ', '.join(cmds))
 
     def parse_attrstr(self, attrstr):
         """ Return value and parent for attribute by string. """

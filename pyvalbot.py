@@ -86,40 +86,80 @@ class PyValIRCProtocol(irc.IRCClient):
     def connectionLost(self, reason):
         print('\nConnection Lost.\n')
         self.deferred.errback(reason)
- 
+
+    def get_argd(self, argname, defaultval=None):
+        """ Safely retrieves a command-line arg from self.argd. """
+        if not self.argd:
+            print('\nSomething went wrong, self.argd was None!\n'
+                  'Setting to main_argd.')
+            self.argd = main_argd
+        if self.argd:
+            if argname in self.argd.keys():
+                return self.argd[argname]
+            else:
+                print('Key not found in self.argd!: {}'.format(argname))
+        return defaultval
+
+    def irc_PING(self, prefix, params):
+        """ Called when someone has pinged the bot,
+            the bot needs to reply to server pings.
+        """
+        self.sendLine('PONG {}'.format(params[-1]))
+
+    def joined(self, channel):
+        """ Called when the bot successfully joins a channel.
+            This is used to keep track of self.admin.channels
+        """
+
+        print('\nJoined: {}'.format(channel))
+        self.admin.channels.append(channel)
+
+    def kickedFrom(self, channel, kicker, message):
+        """ Call when the bot is kicked from a channel. """
+
+        print('\nKicked from: {} by {}, {}'.format(channel, kicker, message))
+        while channel in self.admin.channels:
+            self.admin.channels.remove(channel)
+
+    def left(self, channel):
+        """ Called when the bot leaves a channel.
+            This is used to keep track of self.admin.channels.
+        """
+        print('\nLeft: {}'.format(channel))
+        while channel in self.admin.channels:
+            self.admin.channels.remove(channel)
+
     def lineReceived(self, line):
         """ Receive line, catch what is being received for logs. """
         irc.IRCClient.lineReceived(self, line)
         if self.admin.monitordata:
             print('\nRecv: {}'.format(line))
-    
-    def sendLine(self, line):
-        """ Send line, catch what is being sent for logs. """
-        irc.IRCClient.sendLine(self, line)
-        if self.admin.monitordata:
-            print('\nSent: {}'.format(line))
-    
-    def setArg(self, argname, argval):
-        """ Function to call from other places, to set argd args. """
-        
-        if self.argd:
-            self.argd[argname] = argval
-            print('Set arg: {} = {}'.format(argname, argval))
 
-    def signedOn(self):
-        # This is called once the server has acknowledged that we sent
-        # both NICK and USER.
-        for channel in self.factory.channels:
-            print('Joining :{}'.format(channel))
-            self.join(channel)
- 
+    def nickChanged(self, nick):
+        """ Called when the bots nick changes. """
+        self.admin.nickname = nick
+
+    def noticed(self, user, channel, message):
+        """ Called when a NOTICE is sent to the bot or channel. """
+        if channel == self.admin.nickname:
+            # Private notice.
+            print('NOTICE from {}: {}'.format(user, message))
+        else:
+            # Channel/server notice.
+            print('NOTICE from {} in {}: {}'.format(user, channel, message))
+
+    def pong(self, user, secs):
+        """ Called when pong results are received. """
+
+        print('\nPONG from: {} ({}s)'.format(user, secs))
     # Obviously, called when a PRIVMSG is received.
+
     def privmsg(self, user, channel, message):
         nick, _, host = user.partition('!')
         message = message.strip()
         is_admin = (nick in self.admin.admins)
 
-        if (channel == self.admin.nickname) and (nick.lower() == 'nickserv'):
+        if (nick.lower() == 'nickserv'):
             print('NickServ: {}'.format(message))
 
         # Disallow banned nicks.
@@ -169,6 +209,9 @@ class PyValIRCProtocol(irc.IRCClient):
             
             # Nothing returned from commandhandler, no response is needed.
             if not func:
+                # normal private msg sent directly to pyval.
+                if channel == self.admin.nickname:
+                    print('Message from {}: {}'.format(nick, message))
                 return None
 
             # Get '!cmd rest' to send to func args...
@@ -204,6 +247,26 @@ class PyValIRCProtocol(irc.IRCClient):
         self.admin.last_handle = datetime.now()
         self.admin.last_nick = nick
 
+    def sendLine(self, line):
+        """ Send line, catch what is being sent for logs. """
+        irc.IRCClient.sendLine(self, line)
+        if self.admin.monitordata:
+            print('\nSent: {}'.format(line))
+    
+    def setArg(self, argname, argval):
+        """ Function to call from other places, to set argd args. """
+        
+        if self.argd:
+            self.argd[argname] = argval
+            print('Set arg: {} = {}'.format(argname, argval))
+
+    def signedOn(self):
+        # This is called once the server has acknowledged that we sent
+        # both NICK and USER.
+        for channel in self.factory.channels:
+            print('Joining :{}'.format(channel))
+            self.join(channel)
+ 
     def _handleMessage(self, msg, target, nick=None):
         """ Actually send the message,
             decrease the handling count,
@@ -241,20 +304,7 @@ class PyValIRCProtocol(irc.IRCClient):
     def _showError(self, failure):
         return failure.getErrorMessage()
     
-    def get_argd(self, argname, defaultval=None):
-        """ Safely retrieves a command-line arg from self.argd. """
-        if not self.argd:
-            print('\nSomething went wrong, self.argd was None!\n'
-                  'Setting to main_argd.')
-            self.argd = main_argd
-        if self.argd:
-            if argname in self.argd.keys():
-                return self.argd[argname]
-            else:
-                print('Key not found in self.argd!: {}'.format(argname))
-        return defaultval
     
-
 class PyValIRCFactory(protocol.ReconnectingClientFactory):
 
     def __init__(self, argd=None):
