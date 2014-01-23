@@ -218,3 +218,4 @@ Version 1.0.6:
  - Changed `join`/`part` commands to accept a comma-separated list for multiple channels.
  - Added better logging, NOTICE and NickServ messages are automatically logged.
  - Added the ability to load scripts with PyValExec (__name__ is set to '__pyval__' for sandbox-detection) 
+ - Added `adminhelp` descriptions, admins can now do `adminhelp [cmd]`.
