@@ -191,16 +191,11 @@ class PyValIRCProtocol(irc.IRCClient):
             d = defer.maybeDeferred(lambda: ban_msg)
         else:
             # Process command.
-
-            # Ignore this if we just processed the same command.
-            if message == self.admin.last_command:
-                if is_admin:
-                    print('Would\'ve ignored cmd: {}, '.format(message) +
-                          'last: {}'.format(self.admin.last_command))
-                else:
-                    print('Ignoring cmd: {}, '.format(message) +
-                          'last: {}'.format(self.admin.last_command))
-                    return None
+            # Ignore cmd if we just processed the same command.
+            if (message == self.admin.last_command) and (not is_admin):
+                # print('Ignoring cmd: {}, '.format(message) +
+                #      'last: {}'.format(self.admin.last_command))
+                return None
 
             # Handle message parsing and commands.
             # If the message triggers a command, then a function is returned to
