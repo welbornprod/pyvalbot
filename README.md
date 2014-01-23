@@ -208,5 +208,13 @@ Tests are `unittest`-based, run them with your favorite test runner for python
 I would recommend running these tests before trying to run the full bot or pyval-exec.
 Any configuration/dependency errors should show up right away and give you a hint about how to fix them.
 
+Updates:
+--------
 
+Version 1.0.6:
 
+ - Added channel tracking, admins can list current channels with the `channels` command.
+ - Added `partall` command to part all current channels. (must /msg pyval to rejoin, or restart the bot)
+ - Changed `join`/`part` commands to accept a comma-separated list for multiple channels.
+ - Added better logging, NOTICE and NickServ messages are automatically logged.
+ - Added the ability to load scripts with PyValExec (__name__ is set to '__pyval__' for sandbox-detection) 
