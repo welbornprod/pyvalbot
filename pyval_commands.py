@@ -17,7 +17,7 @@ import subprocess
 
 
 from pyval_exec import ExecBox, TempInput, TimedOut
-from pyval_util import NAME, VERSION
+from pyval_util import NAME, VERSION, VERSIONX
 
 ADMINFILE = '{}_admins.lst'.format(NAME.lower().replace(' ', '-'))
 BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
@@ -521,6 +521,21 @@ class CommandFuncs(object):
         return 'limitrate enabled: {}'.format(self.admin.limit_rate)
 
     @basic_command
+    def admin_me(self, rest):
+        """ Perform an irc action, /ME <channel> <text> """
+        cmdargs = rest.split()
+        if len(cmdargs) < 2:
+            return 'usage: !me <channel> <text>'
+        channel, text = cmdargs[0], ' '.join(cmdargs[1:])
+        if not channel.startswith('#'):
+            channel = '#{}'.format(channel)
+        if not channel in self.admin.channels:
+            return 'not in that channel: {}'.format(channel)
+
+        self.admin.do_action(channel, text)
+        return None
+
+    @basic_command
     def admin_msg(self, rest):
         """ Send a private msg, expects !msg nick/channel message """
 
@@ -783,7 +798,7 @@ class CommandFuncs(object):
     @simple_command
     def cmd_version(self):
         """ Return pyval version, and sys.version. """
-        pyvalver = '{}: {}'.format(NAME, VERSION)
+        pyvalver = '{}: {}-{}'.format(NAME, VERSION, VERSIONX)
         pyver = 'Python: {}'.format(sysversion.split()[0])
         gccver = 'GCC: {}'.format(sysversion.split('\n')[-1])
         verstr = '{}, {}, {}'.format(pyvalver, pyver, gccver)

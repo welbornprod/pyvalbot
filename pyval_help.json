@@ -56,6 +56,10 @@
         "args": "[on, off, ?]",
         "desc": "Change pyval's limitrate option, or show the current value."
         },
+    "me": {
+        "args": "<channel> <text>",
+        "desc": "Make pyval perform an irc action (/ME <text>) in a channel."
+        },
     "msg": {
         "args": "<target> <message>",
         "desc": "Send a message to a nick or channel as pyvalbot."

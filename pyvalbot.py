@@ -69,6 +69,8 @@ class PyValIRCProtocol(irc.IRCClient):
         # Give admin access to certain functions.
         self.admin.quit = self.quit
         self.admin.sendLine = self.sendLine
+        self.admin.ctcpMakeQuery = self.ctcpMakeQuery
+        self.admin.do_action = self.me
         self.admin.handlinglock = defer.DeferredLock()
         # IRCClient must hold a nickname attribute.
         self.nickname = self.admin.nickname
@@ -134,6 +136,12 @@ class PyValIRCProtocol(irc.IRCClient):
         irc.IRCClient.lineReceived(self, line)
         if self.admin.monitordata:
             print('\nRecv: {}'.format(line))
+
+    def me(self, channel, action):
+        """ Perform an action, (/ME action) """
+        if channel and (not channel.startswith('#')):
+            channel = '#{}'.format(channel)
+        self.ctcpMakeQuery(channel, [('ACTION', action)])
 
     def nickChanged(self, nick):
         """ Called when the bots nick changes. """
