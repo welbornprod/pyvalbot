@@ -37,7 +37,7 @@ BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
 USAGESTR = """{versionstr}
 
     Usage:
-        {script} -h
+        {script} -h | -v
         {script} [options]
         
     Options:
@@ -49,6 +49,11 @@ USAGESTR = """{versionstr}
         -l,--logfile               : Use log file instead of stderr/stdout.
         -m,--monitor               : Print all messages to log.
         -n <nick>,--nick <nick>    : Choose what NICK to use for this bot.
+        -p port,--port port        : Port number for the irc server.
+                                     Defaults to: 6667
+        -s server,--server server  : Name/Domain for the irc server.
+                                     Defaults to: irc.freenode.net
+        -v,--version               : Show pyval version.
         
 """.format(versionstr=VERSIONSTR, script=SCRIPT)
 
@@ -382,6 +387,23 @@ if __name__ == '__main__':
 
     # Write pid file.
     write_pidfile()
+    
+    # Parse server/port settings from cmdline.
+    if main_argd['--server']:
+        servername = main_argd['--server']
+    else:
+        servername = 'irc.freenode.net'
+    if main_argd['--port']:
+        portnum = main_argd['--port']
+    else:
+        portnum = '6667'
+    try:
+        int(portnum)
+    except ValueError:
+        print('\nInvalid port number given!: {}'.format(main_argd['--port']))
+        sys.exit(1)
+
+    serverstr = 'tcp:{}:{}'.format(servername, portnum)
 
     # Start irc client.
-    task.react(main, ['tcp:irc.freenode.net:6667', main_argd])
+    task.react(main, [serverstr, main_argd])
