@@ -5,8 +5,36 @@
     IRC Bot that accepts commands, mostly to evaluate and return the result
     of python code.
 
-    Original Twisted basic bot code borrowed from github.com/habnabit.
+    Class descriptions:
+        PyValIRCFactory: Creates a Protocol instance and starts things off.
 
+        PyValIRCProtocol: Handles all IRC communications. All data comes
+        |                 through here first.
+        |
+        |____ AdminHandler: Stores admin info needed by the protocol, the
+        |                   command-handler, and the command-functions.
+        |
+        |__ CommandHandler: After privmsg's are decided to be bot commands,
+            |               the content is passed to CommandHandler for
+            |               parsing. Command names are validated, and admin
+            |               commands are validated. The proper function is
+            |               retrieved and returned to the protocol.
+            |
+            |
+            |__ CommandFuncs: Both admin, and user commands are stored as
+                              functions in CommandFuncs. Admin commands start
+                              with 'admin_', and user commands start with
+                              'cmd_'. The function is retrieved by the
+                              CommandHandler, and returned to the Protocol
+                              which executes it. If the return value is a
+                              string, the string is sent as a privmsg to
+                              wherever the original command came from.
+                              Either a channel, or a user. Functions may return
+                              None if no response is needed.
+
+    Original Twisted basic bot code borrowed from github.com/habnabit.
+    Sandboxing is done by pypy-sandbox (pypy.org)
+    
     -Christopher Welborn 2013-2014
 """
 
@@ -49,6 +77,9 @@ USAGESTR = """{versionstr}
         -l,--logfile               : Use log file instead of stderr/stdout.
         -m,--monitor               : Print all messages to log.
         -n <nick>,--nick <nick>    : Choose what NICK to use for this bot.
+        -P pw,--password pw        : Specify a password for the IDENTIFY
+                                     command. The bot will identify with
+                                     NickServ on connection.
         -p port,--port port        : Port number for the irc server.
                                      Defaults to: 6667
         -s server,--server server  : Name/Domain for the irc server.
@@ -91,12 +122,14 @@ class PyValIRCProtocol(irc.IRCClient):
                                              reactor_=reactor,
                                              task_=task,
                                              adminhandler=self.admin)
+        # Parse any auto-join channels the factory may have set.
+        self.parse_join_channels()
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
         print('\nConnected to: {}, Port: {}'.format(self.servername,
                                                     self.portstr))
-        
+
     def connectionLost(self, reason):
         print('\nConnection Lost.\n')
         self.deferred.errback(reason)
@@ -143,7 +176,7 @@ class PyValIRCProtocol(irc.IRCClient):
     def kickedFrom(self, channel, kicker, message):
         """ Call when the bot is kicked from a channel. """
 
-        print('\nKicked from: {} by {}, {}'.format(channel, kicker, message))
+        print('\nKicked from {} by {}: {}'.format(channel, kicker, message))
         while channel in self.admin.channels:
             self.admin.channels.remove(channel)
 
@@ -176,18 +209,40 @@ class PyValIRCProtocol(irc.IRCClient):
         self.ctcpMakeQuery(channel, [('ACTION', action)])
 
     def modeChanged(self, user, channel, enabled, modes, args):
-        """ Called when a mode has changed for a user/channel. """
+        """ Called when a mode has changed for a user/channel.
+            Any mode that affects the bot is logged, 
+            whether it's from the server or another user.
+        """
 
-        if channel == self.nickname:
+        usermode = (args and (self.nickname in args))
+        if usermode or (channel == self.nickname):
+            # This mode affects the bot.
             if user == self.nickname:
-                user = 'server'
-            # Our mode has changed.
-            enabledstr = '+' if enabled else '-'
-            argstr = repr(args) if args else ''
-            print('Mode changed by {} to: {}{}, args: {}'.format(user,
-                                                                 enabledstr,
-                                                                 modes,
-                                                                 argstr))
+                username = 'server'
+            else:
+                # another user has set a mode on the bot.
+                username = self.parse_user(user)
+            # Use +/- notation for enabled/disabled.
+            modestr = '+{}' if enabled else '-{}'
+            modestr = modestr.format(modes)
+            if (args > (None,)) and (args != (self.nickname,)):
+                # Mode has args.
+                # If the bots nick is the only argument, don't log the args.
+                argstr = ', args: {!r}'.format(args)
+            else:
+                # No args for this mode.
+                argstr = ''
+
+            if channel == self.nickname:
+                # server mode, no channel.
+                print('Mode changed by {}: {}{}'.format(username,
+                                                        modestr,
+                                                        argstr))
+            else:
+                print('Mode changed by {} in {}: {}{}'.format(username,
+                                                              channel,
+                                                              modestr,
+                                                              argstr))
 
     def nickChanged(self, nick):
         """ Called when the bots nick changes. """
@@ -215,6 +270,28 @@ class PyValIRCProtocol(irc.IRCClient):
                 noticefmt = 'NOTICE from {} in {}: {}'
                 print(noticefmt.format(user, channel, message))
 
+    def parse_join_channels(self):
+        """ Parse any channels that were set by the factory
+            for automatic joins on connection.
+        """
+        if hasattr(self, 'joinchannels') and getattr(self, 'joinchannels'):
+            # Comma-separated list of channels to join from cmd-line args.
+            self.channels = [s.strip() for s in self.joinchannels.split(',')]
+            return True
+        else:
+            # Default channel to join when none are supplied
+            self.channels = ['#{}'.format(self.nickname)]
+            return False
+
+    def parse_user(self, userstring):
+        """ Parses irc format for user names, returns only the user name.
+            No host.
+        """
+        if userstring and ('!' in userstring):
+            return userstring.split('!')[0]
+        # not an irc format
+        return userstring
+
     def pong(self, user, secs):
         """ Called when pong results are received. """
         # Only print a pong reply if secs is given, or monitordata is False.
@@ -223,7 +300,7 @@ class PyValIRCProtocol(irc.IRCClient):
             print('\nPONG from: {} ({}s)'.format(user, secs))
         elif not self.admin.monitordata:
             # no data monitoring, but seconds is unknown.
-            print('\nPONG from: {} (time unknown)'.format(user))
+            print('\nPONG from: {} (heartbeat response)'.format(user))
 
     def privmsg(self, user, channel, message):
         """ Handles personal and channel messages.
@@ -324,7 +401,17 @@ class PyValIRCProtocol(irc.IRCClient):
         irc.IRCClient.sendLine(self, line)
         # log everything sent if monitordata is set.
         if self.admin.monitordata:
-            print('\nSent: {}'.format(line))
+            if ':IDENTIFY' in line:
+                # don't log the users nick pw.
+                idline = ' '.join(line.split()[:-1])
+                print('\nSent: {} {}'.format(idline, '******'))
+            elif ':PASS' in line:
+                # password line. don't log the pw.
+                pwline = ' '.join(line.split()[:-1])
+                print('\nSent: {} {}'.format(pwline, '******'))
+            else:
+                # normal, probably safe line. log it.
+                print('\nSent: {}'.format(line))
     
     def set_serverinfo(self):
         """ set self.servername, self.portstr from the original descripton. """
@@ -343,9 +430,17 @@ class PyValIRCProtocol(irc.IRCClient):
             print('Set arg: {} = {}'.format(argname, argval))
 
     def signedOn(self):
-        # This is called once the server has acknowledged that we sent
-        # both NICK and USER.
-        for channel in self.factory.channels:
+        """ This is called once the server has acknowledged that we sent
+            both NICK and USER.
+        """
+
+        # identify with nickserv if the --password flag was given.
+        if hasattr(self, 'nickservpw'):
+            self.admin.identify(self.nickservpw)
+            self.nickservpw = '<deleted>'
+
+        # Join channels.
+        for channel in self.channels:
             print('Joining :{}'.format(channel))
             self.join(channel)
 
@@ -390,24 +485,15 @@ class PyValIRCProtocol(irc.IRCClient):
 class PyValIRCFactory(protocol.ReconnectingClientFactory):
 
     def __init__(self, argd=None, serverstr=None):
+        self.argd = argd
         self.protocol = PyValIRCProtocol
         # Send a few pieces of info to the irc protocol by settings attributes.
-        self.protocol.argd = argd
+        self.protocol.argd = self.argd
         self.protocol.serverstr = serverstr
+        self.protocol.joinchannels = self.get_argd('--channels')
+        if self.get_argd('--password'):
+            self.protocol.nickservpw = self.get_argd('--password')
 
-        self.argd = argd
-        
-        if self.get_argd('--channels'):
-            # Comma-separated list of channels to join from cmd-line args.
-            if ',' in self.get_argd('--channels'):
-                self.channels = self.get_argd('--channels').split(',')
-            else:
-                self.channels = [self.get_argd('--channels')]
-        else:
-            # Default channel to join when none are supplied
-
-            self.channels = ['#pyval']
-    
     def get_argd(self, argname):
         """ Safely retrieve arg from self.argd """
         

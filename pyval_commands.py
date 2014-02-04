@@ -125,6 +125,7 @@ class AdminHandler(object):
         self.help_info = help_info if help_info else self.load_help()
         if self.help_info:
             if (not help_info):
+                # Print a message if help was loaded from file
                 print('\nHelp info file loaded: {}'.format(HELPFILE))
         else:
             print('\nNo help commands will be available.')
@@ -261,6 +262,16 @@ class AdminHandler(object):
         self.handlinglock.acquire()
         self.handlingcount += 1
         self.handlinglock.release()
+
+    def identify(self, pw):
+        """ Send an IDENTIFY msg to NickServ. """
+        print('Identifying with nickserv...')
+        if not pw:
+            return 'no password supplied.'
+
+        self.sendLine('PRIVMSG NickServ :IDENTIFY '
+                      '{} {}'.format(self.nickname, pw))
+        return None
 
     def load_help(self):
         """ Load help from json file. """
@@ -461,16 +472,15 @@ class CommandFuncs(object):
         return '{} = {}'.format(rest, attrval)
 
     @basic_command
+    def admin_id(self, rest):
+        """ Shortcut for admin_identify """
+        return self.admin.identify(rest)
+
+    @basic_command
     def admin_identify(self, rest):
         """ Identify with nickserv, expects !identify password """
 
-        print('Identifying with nickserv...')
-        if not rest:
-            return 'no password supplied.'
-
-        self.admin.sendLine('PRIVMSG NickServ :IDENTIFY '
-                            '{} {}'.format(self.admin.nickname, rest))
-        return None
+        return self.admin.identify(rest)
 
     @basic_command
     def admin_join(self, rest):
