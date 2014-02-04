@@ -7,5 +7,5 @@
 
 NAME = 'PyVal'
 VERSION = '1.0.6'
-VERSIONX = '2'
+VERSIONX = '3'
 VERSIONSTR = '{} v. {}-{}'.format(NAME, VERSION, VERSIONX)

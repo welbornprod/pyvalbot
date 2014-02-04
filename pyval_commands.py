@@ -771,15 +771,15 @@ class CommandFuncs(object):
         when, sep, msg = rest.partition(' ')
         try:
             when = int(when)
-        except:
-            when = 0
+        except ValueError:
+            return 'usage: saylater <seconds>'
         
         d = self.defer.Deferred()
         # A small example of how to defer the reply from a command. callLater
         # will callback the Deferred with the reply after so many seconds.
         self.reactor.callLater(when, d.callback, msg)
         # Returning the Deferred here means that it'll be returned from
-        # maybeDeferred in privmsg.
+        # maybeDeferred in pyvalbot.PyValIRCProtocol.privmsg.
         return d
     
     @simple_command

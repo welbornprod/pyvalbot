@@ -28,7 +28,7 @@ from twisted.words.protocols import irc
  
 # Local stuff (Command Handler)
 from pyval_commands import AdminHandler, CommandHandler
-from pyval_util import NAME, VERSIONSTR
+from pyval_util import NAME, VERSION, VERSIONSTR
 
 SCRIPT = os.path.split(sys.argv[0])[1]
 
@@ -64,6 +64,8 @@ class PyValIRCProtocol(irc.IRCClient):
         self.argd = main_argd
         self.deferred = defer.Deferred()
         nick = self.get_argd('--nick', 'pyval')
+        # uses self.serverstr, which is set by the factory before init.
+        self.set_serverinfo()
 
         # Class to handle admin stuff. Needs to be accessed here and in
         # CommandHandler.
@@ -71,6 +73,7 @@ class PyValIRCProtocol(irc.IRCClient):
         self.admin.monitor = self.get_argd('--monitor', False)
         self.admin.monitordata = self.get_argd('--data', False)
         self.admin.monitorips = self.get_argd('--ips', False)
+
         # Give admin access to certain functions.
         self.admin.quit = self.quit
         self.admin.sendLine = self.sendLine
@@ -79,7 +82,10 @@ class PyValIRCProtocol(irc.IRCClient):
         self.admin.handlinglock = defer.DeferredLock()
         # IRCClient must hold a nickname attribute.
         self.nickname = self.admin.nickname
-
+        self.erroneousNickFallback = '{}_'.format(self.nickname)
+        # Settings for client/version replies.
+        self.versionName = NAME
+        self.versionNum = VERSION
         # Class to handle messages and commands.
         self.commandhandler = CommandHandler(defer_=defer,
                                              reactor_=reactor,
@@ -88,7 +94,8 @@ class PyValIRCProtocol(irc.IRCClient):
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
-        print('\nConnected.')
+        print('\nConnected to: {}, Port: {}'.format(self.servername,
+                                                    self.portstr))
         
     def connectionLost(self, reason):
         print('\nConnection Lost.\n')
@@ -109,9 +116,11 @@ class PyValIRCProtocol(irc.IRCClient):
 
     def irc_PING(self, prefix, params):
         """ Called when someone has pinged the bot,
-            the bot needs to reply to server pings.
+            the bot needs to reply to pings.
         """
         self.sendLine('PONG {}'.format(params[-1]))
+        if not self.admin.monitordata:
+            print('Sent PONG reply: {}'.format(params[-1]))
 
     def joined(self, channel):
         """ Called when the bot successfully joins a channel.
@@ -120,6 +129,16 @@ class PyValIRCProtocol(irc.IRCClient):
 
         print('\nJoined: {}'.format(channel))
         self.admin.channels.append(channel)
+
+        if channel.strip('#') == self.nickname:
+            # Set topic to our own channel if possible.
+            topic = ('Python Evaluation Bot (pyval) | '
+                     'Type !py <code> or !help [cmd] if '
+                     '{} '.format(self.nickname) +
+                     'is around. | '
+                     'Use \\n for actual newlines (Enter), or \\\\n '
+                     'for escaped newlines.')
+            self.topic(channel, topic)
 
     def kickedFrom(self, channel, kicker, message):
         """ Call when the bot is kicked from a channel. """
@@ -142,32 +161,76 @@ class PyValIRCProtocol(irc.IRCClient):
         if self.admin.monitordata:
             print('\nRecv: {}'.format(line))
 
+        if 'PONG' in line:
+            try:
+                pongdatalines = line.split('PONG')[1].strip().split()
+                # Don't know where this pong came from.
+                self.pong(pongdatalines[-1].strip(':'), None)
+            except Exception as ex:
+                print('Failed to parse pong msg: {}'.format(ex))
+
     def me(self, channel, action):
         """ Perform an action, (/ME action) """
         if channel and (not channel.startswith('#')):
             channel = '#{}'.format(channel)
         self.ctcpMakeQuery(channel, [('ACTION', action)])
 
+    def modeChanged(self, user, channel, enabled, modes, args):
+        """ Called when a mode has changed for a user/channel. """
+
+        if channel == self.nickname:
+            if user == self.nickname:
+                user = 'server'
+            # Our mode has changed.
+            enabledstr = '+' if enabled else '-'
+            argstr = repr(args) if args else ''
+            print('Mode changed by {} to: {}{}, args: {}'.format(user,
+                                                                 enabledstr,
+                                                                 modes,
+                                                                 argstr))
+
     def nickChanged(self, nick):
         """ Called when the bots nick changes. """
         self.admin.nickname = nick
 
+    def notice(self, user, message):
+        """ Send a "notice" to a channel or user. """
+        self.sendLine('NOTICE {} :{}'.format(user, message))
+        # Notice sends are always logged, either here or in sendLine when
+        # monitordata is set.
+        if not self.admin.monitordata:
+            print('NOTICE to {}: {}'.format(user, message))
+
     def noticed(self, user, channel, message):
         """ Called when a NOTICE is sent to the bot or channel. """
-        if channel == self.admin.nickname:
-            # Private notice.
-            print('NOTICE from {}: {}'.format(user, message))
-        else:
-            # Channel/server notice.
-            print('NOTICE from {} in {}: {}'.format(user, channel, message))
+        # If data is already monitored, printing again will only cause clutter.
+        # So skip this part if monitordata is set.
+        if not self.admin.monitordata:
+            if channel == self.admin.nickname:
+                # Private notice.
+                noticefmt = 'NOTICE from {}: {}'
+                print(noticefmt.format(user, message))
+            else:
+                # Channel/server notice.
+                noticefmt = 'NOTICE from {} in {}: {}'
+                print(noticefmt.format(user, channel, message))
 
     def pong(self, user, secs):
         """ Called when pong results are received. """
-
-        print('\nPONG from: {} ({}s)'.format(user, secs))
-    # Obviously, called when a PRIVMSG is received.
+        # Only print a pong reply if secs is given, or monitordata is False.
+        if secs:
+            # seconds is known, print it whether monitordata is set or not.
+            print('\nPONG from: {} ({}s)'.format(user, secs))
+        elif not self.admin.monitordata:
+            # no data monitoring, but seconds is unknown.
+            print('\nPONG from: {} (time unknown)'.format(user))
 
     def privmsg(self, user, channel, message):
+        """ Handles personal and channel messages.
+            Most of the work is done here.
+            Lines are checked for pyval commands, auto-bans are handled,
+            responses are throttled based on a number of things.
+        """
         nick, _, host = user.partition('!')
         message = message.strip()
         is_admin = (nick in self.admin.admins)
@@ -257,10 +320,21 @@ class PyValIRCProtocol(irc.IRCClient):
 
     def sendLine(self, line):
         """ Send line, catch what is being sent for logs. """
+        # call the original sendline (handles default actions).
         irc.IRCClient.sendLine(self, line)
+        # log everything sent if monitordata is set.
         if self.admin.monitordata:
             print('\nSent: {}'.format(line))
     
+    def set_serverinfo(self):
+        """ set self.servername, self.portstr from the original descripton. """
+        if hasattr(self, 'serverstr'):
+            self.servername, self.portstr = self.serverstr.split(':')[1:]
+        else:
+            self.servername, self.portstr = 'Unknown', 'Unknown'
+            print('No serverstr set on PyValIRCProtocol! '
+                  'Messages will say \'Unknown\'.')
+
     def setArg(self, argname, argval):
         """ Function to call from other places, to set argd args. """
         
@@ -274,7 +348,7 @@ class PyValIRCProtocol(irc.IRCClient):
         for channel in self.factory.channels:
             print('Joining :{}'.format(channel))
             self.join(channel)
- 
+
     def _handleMessage(self, msg, target, nick=None):
         """ Actually send the message,
             decrease the handling count,
@@ -315,9 +389,12 @@ class PyValIRCProtocol(irc.IRCClient):
     
 class PyValIRCFactory(protocol.ReconnectingClientFactory):
 
-    def __init__(self, argd=None):
+    def __init__(self, argd=None, serverstr=None):
         self.protocol = PyValIRCProtocol
+        # Send a few pieces of info to the irc protocol by settings attributes.
         self.protocol.argd = argd
+        self.protocol.serverstr = serverstr
+
         self.argd = argd
         
         if self.get_argd('--channels'):
@@ -328,6 +405,7 @@ class PyValIRCFactory(protocol.ReconnectingClientFactory):
                 self.channels = [self.get_argd('--channels')]
         else:
             # Default channel to join when none are supplied
+
             self.channels = ['#pyval']
     
     def get_argd(self, argname):
@@ -356,11 +434,11 @@ def write_pidfile():
         return False
 
 
-def main(reactor, description, argd):
+def main(reactor, serverstr, argd):
     """ main-entry point for ircbot. """
     try:
-        endpoint = endpoints.clientFromString(reactor, description)
-        factory = PyValIRCFactory(argd=argd)
+        endpoint = endpoints.clientFromString(reactor, serverstr)
+        factory = PyValIRCFactory(argd=argd, serverstr=serverstr)
         d = endpoint.connect(factory)
         d.addCallback(lambda protocol: protocol.deferred)
         return d
