@@ -44,9 +44,13 @@
         "args": "<attribute>",
         "desc": "Retrieve the value of a pyval CommandFuncs  attribute. (ex: admins.channels)"
             },
+    "id": {
+        "args": "<password>",
+        "desc": "Identify with NickServ. (shortcut for the identify command)"
+        },
     "identify": {
         "args": "<password>",
-        "desc": "Identify pyval with NickServ."
+        "desc": "Identify with NickServ."
         },
     "join": {
         "args": "<channels>",
