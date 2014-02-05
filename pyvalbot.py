@@ -135,6 +135,10 @@ class PyValIRCProtocol(irc.IRCClient):
         """ Initial connection was made, no 'welcome' message yet. """
         # Take care of some internal stuff.
         irc.IRCClient.connectionMade(self)
+        try:
+            self.transport.setTcpKeepAlive(1)
+        except Exception as ex:
+            log.msg('Unable to setTcpKeepAlive:\n{}'.format(ex))
 
         # Log the settings for this session.
         log.msg('     Version: {}'.format(VERSIONSTR))
