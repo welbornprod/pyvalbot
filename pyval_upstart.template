@@ -1,0 +1,33 @@
+# Upstart config for pyval.
+# This is used to generate the actual config file.
+#
+#      Location: /etc/init
+# Reload Config: [sudo] initctl reload-configuration
+# Start Service: [sudo] start {pyvalservice}
+#  Stop Service: [sudo] stop {pyvalservice}
+# Query Service: [sudo] initctl status {pyvalservice}
+
+description "PyVal Bot Service"
+author  "Christopher Welborn <cj@welbornprod.com>"
+version "1.0.0"
+
+# Wait for network before starting.
+start on static-network-up
+
+# Kill pyvalbot when networking is gone.
+stop on deconfiguring-networking
+
+# Start the service in its home dir, with user specified arguments.
+chdir {pyvaldir}
+exec {pyexe} {pyvalscript}{pyvalargs}
+respawn
+
+# Don't respawn on a normal exit (!shutdown from irc.)
+normal exit 0 INT
+
+# This would direct output to the console. Not sure which console though :)
+# console output
+# 
+# Use default console log setting.
+# There should be no real output, because --logfile is always used with pyvalbot.
+console log

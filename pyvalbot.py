@@ -142,7 +142,7 @@ class PyValIRCProtocol(irc.IRCClient):
 
         # Log the settings for this session.
         log.msg('     Version: {}'.format(VERSIONSTR))
-        log.msg('      Python: {}'.format(sys.version.replace('\n', ', ')))
+        log.msg('      Python: {}'.format(sys.version.replace('\n', '- ')))
         log.msg('Connected to: {} - Port: {}'.format(self.hostname,
                                                      self.portnum))
         log.msg('        Nick: {}'.format(self.admin.nickname))
@@ -384,7 +384,7 @@ class PyValIRCProtocol(irc.IRCClient):
         if nick in self.admin.banned:
             return None
 
-        # rate-limit responses, handle auto-bans.
+        # Handle auto-bans for command msgs.
         ban_msg = None
         if (self.admin.last_handle and
            self.admin.last_nick and self.is_command(message)):
@@ -395,18 +395,20 @@ class PyValIRCProtocol(irc.IRCClient):
             if nick in self.admin.banned_warned.keys():
                 lasttime = self.admin.banned_warned[nick]['last']
                 usersecs = (datetime.now() - lasttime).total_seconds()
-                if usersecs < 4:
-                    if self.admin.ban_add(nick):
-                        ban_msg = 'no more.'
-                    else:
-                        ban_msg = 'slow down.'
+                if usersecs < self.admin.msg_timelimit:
+                    # User is sending too many msgs too fast.
+                    ban_msg = self.admin.ban_add(nick)
+                else:
+                    # Time on last command is okay,
+                    # update this warned-user's last msg time.
+                    self.admin.banned_warned[nick]['last'] = datetime.now()
 
             elif (nick == self.admin.last_nick) and (respondsecs < 3):
                 # first time offender
-                self.admin.ban_add(nick)
+                ban_msg = self.admin.ban_add(nick)
 
         if ban_msg:
-            # Send ban msg instead of usual command response.
+            # Send ban msg instead of usual command response if available.
             d = defer.maybeDeferred(lambda: ban_msg)
         else:
             # Process command.
@@ -435,7 +437,8 @@ class PyValIRCProtocol(irc.IRCClient):
         if self.admin.limit_rate:
             # Disallow backup of requests. If handlingcount is too much
             # just ignore this one.
-            if (not is_admin) and (self.admin.handlingcount > 3):
+            if ((not is_admin) and
+               (self.admin.handlingcount > self.admin.banwarn_limit)):
                 log.msg('Too busy, ignoring command: {}'.format(message))
                 return None
             # Keep track of how many requests are unanswered (handling).

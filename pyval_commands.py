@@ -17,7 +17,7 @@ import subprocess
 from twisted.python import log
 
 from pyval_exec import ExecBox, TempInput, TimedOut
-from pyval_util import NAME, VERSION, VERSIONX
+from pyval_util import NAME, VERSION, VERSIONX, humantime, timefromsecs
 
 ADMINFILE = '{}_admins.lst'.format(NAME.lower().replace(' ', '-'))
 BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
@@ -113,6 +113,12 @@ class AdminHandler(object):
         self.last_command = None
         # Whether or not response rate-limiting is enabled.
         self.limit_rate = True
+        # Time in between commands required for a user.
+        # If the user sends multiple commands before this limit is reached,
+        # their 'ban-warned' count increases.
+        self.msg_timelimit = 3
+        # Number of 'ban-warns' before perma-banning a nick.
+        self.banwarn_limit = 3
         # Current load, and lock required to change its value.
         self.handlingcount = 0
         self.handlinglock = None
@@ -191,29 +197,54 @@ class AdminHandler(object):
 
         if nick in self.admins:
             # Admins wont be banned or counted.
-            return False
+            return ''
 
         if permaban:
-            # Straight to permaban.
-            self.banned.append(nick)
-            self.ban_save()
-            return True
+            # Straight to permaban. (better to use ban_addperma now)
+            self.ban_addperma(nick)
+            return 'no more.'
 
         # Auto banner.
         if nick in self.banned_warned.keys():
             # Increment the warning count.
             self.banned_warned[nick]['last'] = datetime.now()
             self.banned_warned[nick]['count'] += 1
-            if self.banned_warned[nick]['count'] == 3:
+            newcount = self.banned_warned[nick]['count']
+            if newcount == self.banwarn_limit:
                 # No more warnigns, permaban.
                 self.banned.append(nick)
                 self.ban_save()
-                return True
+                return 'no more.'
+            elif newcount == (self.banwarn_limit - 1):
+                # last warning.
+                return 'really, slow down with your commands.'
+
         else:
             # First warning.
-            self.banned_warned[nick] = {'last': datetime.now(),
-                                        'count': 1}
-        return False
+            self.banned_warned[nick] = {'last': datetime.now(), 'count': 1}
+        
+        # Warning count increased, not last warning or permaban yet.
+        return 'slow down with your commands.'
+
+    def ban_addperma(self, nick):
+        """ Add a permanently banned nick. """
+
+        banned = []
+        if isinstance(nick, (list, tuple)):
+            for n in nick:
+                if (n not in self.admins) and (n not in self.banned):
+                    self.banned.append(n)
+                    banned.append(n)
+        else:
+            if (nick not in self.admins) and (nick not in self.banned):
+                self.banned.append(nick)
+                banned.append(n)
+
+        saved = self.ban_save() if banned else False
+        if saved:
+            return banned
+        else:
+            return []
 
     def ban_load(self):
         """ Load banned nicks if any are available. """
@@ -229,6 +260,28 @@ class AdminHandler(object):
             log.msg('Unable to load banned file: {}\n{}'.format(BANFILE, exos))
         return banned
 
+    def ban_remove(self, nicklst):
+        """ Remove nicks from the banned list. """
+        if not nicklst:
+            return []
+
+        removed = []
+        for nick in nicklst:
+            if nick in self.banned:
+                while nick in self.banned:
+                    self.banned.remove(nick)
+                # Reset ban warnings.
+                if nick in self.banned_warned.keys():
+                    self.banned_warned[nick] = {'last': datetime.now(),
+                                                'count': 0}
+                removed.append(nick)
+
+        saved = self.ban_save()
+        if saved:
+            return removed
+        else:
+            return []
+
     def ban_save(self):
         """ Load perma-banned list. """
         try:
@@ -239,18 +292,11 @@ class AdminHandler(object):
             log.msg('Unable to save banned file: {}\n{}'.format(BANFILE, exos))
         return False
 
-    def ban_remove(self, nick):
-        """ Remove a nick from the banned list. """
-        while nick in self.banned:
-            self.banned.remove(nick)
-        if nick in self.banned_warned.keys():
-            self.banned_warned[nick] = {'last': datetime.now(), 'count': 0}
-        return self.ban_save()
-
     def get_uptime(self):
-        """ Return the current uptime for this instance. """
-        uptime = ((datetime.now() - self.starttime).total_seconds() / 60)
-        return round(uptime, 2)
+        """ Return the current uptime in seconds for this instance.
+            Further processing can be done with pyval_util.timefromsecs().
+        """
+        return int((datetime.now() - self.starttime).total_seconds())
 
     def handling_decrease(self):
         if self.handlingcount > 0:
@@ -422,15 +468,49 @@ class CommandFuncs(object):
     def admin_ban(self, rest):
         """ Ban a nick. """
 
-        if self.admin.ban_add(rest, permaban=True):
-            return 'banned: {}'.format(rest)
-        else:
-            return 'unable to ban: {}'.format(rest)
+        if not rest.strip():
+            return 'usage: {}ban <nick>'.format(self.admin.cmdchar)
+
+        nicks = rest.split(' ')
+        alreadybanned = [n for n in nicks if n in self.admin.banned]
+
+        banned = self.admin.ban_addperma(nicks)
+        notbanned = [n for n in nicks
+                     if (n not in banned) and (n not in alreadybanned)]
+
+        msg = []
+        if banned:
+            msg.append('banned: {}'.format(', '.join(banned)))
+    
+        if alreadybanned:
+            msg.append('already banned: '
+                       '{}'.format(', '.join(alreadybanned)))
+        if notbanned:
+            msg.append('unable to ban: {}'.format(', '.join(notbanned)))
+        return ', '.join(msg)
 
     @simple_command
     def admin_banned(self):
         """ list banned. """
-        return 'currently banned: {}'.format(', '.join(self.admin.banned))
+        banned = ', '.join(sorted(self.admin.banned))
+        if banned:
+            return 'currently banned: {}'.format(banned)
+        else:
+            return 'nobody is banned.'
+
+    @simple_command
+    def admin_banwarns(self):
+        """ list ban warnings. """
+
+        banwarns = []
+        for warnednick in sorted(self.admin.banned_warned.keys()):
+            count = self.admin.banned_warned[warnednick]['count']
+            banwarns.append('{}: {}'.format(warnednick, count))
+
+        if banwarns:
+            return '[{}]'.format(']['.join(banwarns))
+        else:
+            return 'no ban warnings issued.'
 
     @basic_command
     def admin_blacklist(self, rest):
@@ -664,16 +744,30 @@ class CommandFuncs(object):
     @simple_command
     def admin_stats(self):
         """ Return simple stats info. """
-        uptime = self.admin.get_uptime()
-        return 'uptime: {}min, handled: {}'.format(uptime, self.admin.handled)
+        uptime = timefromsecs(self.admin.get_uptime())
+        return 'uptime: {}, handled: {}'.format(uptime, self.admin.handled)
 
     @basic_command
     def admin_unban(self, rest):
         """ Unban a nick. """
-        if self.admin.ban_remove(rest):
-            return 'unbanned: {}'.format(rest)
+        if not rest.strip():
+            return 'usage: {}unban <nick>'.format(self.admin.cmdchar)
+
+        nicks = rest.split()
+        unbanned = self.admin.ban_remove(nicks)
+        notbanned = [n for n in nicks if n not in unbanned]
+
+        msg = []
+        if unbanned:
+            msg.append('unbanned: {}'.format(', '.join(unbanned)))
+            if notbanned:
+                msg.append('not banned: {}'.format(', '.join(notbanned)))
+            return ', '.join(msg)
         else:
-            return 'unable to unban: {}'.format(rest)
+            if notbanned:
+                return 'not banned: {}'.format(', '.join(notbanned))
+            else:
+                return 'unable to unban: {}'.format(rest)
 
     def cmd_help(self, rest, nick=None):
         """ Returns a short help string. """
@@ -690,10 +784,18 @@ class CommandFuncs(object):
             Restrictions are set. No os module, no nested eval() or exec().
         """
 
+        if not rest.strip():
+            # No input.
+            return None
+
         def pastebin_chatout(pastebinurl):
             """ Callback for deferred print_topastebin.
-            Expects result from print_topastebin(content).
+                Expects result from print_topastebin(content).
                 Returns final chat output when finished.
+
+                It uses the 'execbox' created in cmd_python() to get output.
+                ...so it must be local to cmd_python() for now.
+
             """
             # Get chat safe output (partial eval output with pastebin url)
             if pastebinurl:
@@ -711,10 +813,6 @@ class CommandFuncs(object):
                 if len(chatout) > 100:
                     chatout = chatout[:100]
                 return '{} (...truncated)'.format(chatout)
-
-        if not rest.replace(' ', '').replace('\t', ''):
-            # No input.
-            return None
 
         # User wants help.
         if rest.lower().startswith('help'):
@@ -798,13 +896,14 @@ class CommandFuncs(object):
     def cmd_time(self):
         """ Retrieve current date and time. """
         
-        return str(datetime.now())
+        return humantime(datetime.now())
 
     @simple_command
     def cmd_uptime(self):
         """ Return uptime, and starttime """
-        uptime = self.admin.get_uptime()
-        s = 'start: {}, up: {}min'.format(self.admin.starttime, uptime)
+        uptime = timefromsecs(self.admin.get_uptime())
+        s = 'start: {}, up: {}'.format(humantime(self.admin.starttime),
+                                       uptime)
         return s
     
     @simple_command
