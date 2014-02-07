@@ -46,7 +46,7 @@ class TestCommandFuncs(unittest.TestCase):
 
         cmd, sep, args = userinput.partition(' ')
         usernick = 'testadmin' if asadmin else 'testuser'
-        cmdfunc = cmdhandler.parse_message(userinput, username=usernick)
+        cmdfunc = cmdhandler.parse_data(usernick, '#channel', userinput)
         if cmdfunc:
             return cmdfunc
         else:
@@ -74,11 +74,11 @@ class TestCommandFuncs(unittest.TestCase):
         """ Setup each test with an admin/command handler """
         global ADMINHELP
         if ADMINHELP:
-            self.adminhandler = AdminHandler(nick='testnick',
-                                             help_info=ADMINHELP)
+            self.adminhandler = AdminHandler(help_info=ADMINHELP)
         else:
-            self.adminhandler = AdminHandler(nick='testnick')
+            self.adminhandler = AdminHandler()
             ADMINHELP = self.adminhandler.help_info
+        self.adminhandler.nickname = 'testnick'
         self.adminhandler.admins.append('testadmin')
         self.cmdhandler = CommandHandler(adminhandler=self.adminhandler)
 
