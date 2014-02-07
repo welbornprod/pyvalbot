@@ -30,7 +30,9 @@ class TestExec(unittest.TestCase):
         ebox = ExecBox('print("okay")')
         rawoutput = ebox.execute(raw_output=True)
         self.assertEqual(rawoutput, 'okay',
-                         msg='Incorrect raw output!')
+                         msg=('Incorrect raw output!\n'
+                              'Expecting: \'okay\'\n'
+                              '      Got: {}'.format(rawoutput)))
 
         # Test truncating lines in safe_output()
         longcode = 'print("\\\\n".join([str(i) for i in range(55)]))'
