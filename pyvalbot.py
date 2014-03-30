@@ -41,6 +41,7 @@
 
 # System/General stuff
 from datetime import datetime
+from hashlib import md5
 from os import getpid
 import os.path
 import sys
@@ -69,6 +70,7 @@ USAGESTR = """{versionstr}
         {script} [options]
         
     Options:
+        -b,--noheartbeat           : Don't log the heartbeat pongs.
         -c chans,--channels chans  : Comma-separated list of channels to join.
         -C chr,--commandchar chr   : Character that marks a msg as a command.
                                      Messages that start with this character
@@ -103,11 +105,12 @@ class PyValIRCProtocol(irc.IRCClient):
         # Class to handle admin stuff. Needs to be accessed here and in
         # CommandHandler.
         self.admin = AdminHandler()
-        self.admin.monitor = self.get_argd('--monitor', default=False)
-        self.admin.monitordata = self.get_argd('--data', default=False)
-        self.admin.monitorips = self.get_argd('--ips', default=False)
-        self.admin.nickname = self.get_argd('--nick', default='pyval')
-        self.admin.cmdchar = self.get_argd('--commandchar', default='!')
+        self.admin.monitor = self.get_argd('--monitor', False)
+        self.admin.monitordata = self.get_argd('--data', False)
+        self.admin.monitorips = self.get_argd('--ips', False)
+        self.admin.nickname = self.get_argd('--nick', 'pyval')
+        self.admin.cmdchar = self.get_argd('--commandchar', '!')
+        self.admin.noheartbeatlog = self.get_argd('--noheartbeat', False)
         # Give admin access to certain functions.
         self.admin.quit = self.quit
         self.admin.sendLine = self.sendLine
@@ -250,6 +253,14 @@ class PyValIRCProtocol(irc.IRCClient):
         """
         return self.versionName
 
+    def md5(self, s):
+        """ md5 some bytes, strings are encoded in utf-8 if passed. """
+        if isinstance(s, bytes):
+            hashobj = md5(s)
+        else:
+            hashobj = md5(s.encode('utf-8'))
+        return hashobj.hexdigest()
+
     def me(self, channel, action):
         """ Perform an action, (/ME action) """
         if channel and (not channel.startswith('#')):
@@ -311,6 +322,9 @@ class PyValIRCProtocol(irc.IRCClient):
         if not self.admin.monitordata:
             if channel == self.admin.nickname:
                 # Private notice.
+                # Check for ZNC autoop challenge.
+                if '!ZNCAO CHALLENGE' in message:
+                    self.respond_znc_challenge(user, message)
                 noticefmt = 'NOTICE from {}: {}'
                 log.msg(noticefmt.format(user, message))
             else:
@@ -365,7 +379,9 @@ class PyValIRCProtocol(irc.IRCClient):
             log.msg('PONG from: {} ({}s)'.format(user, secs))
         elif not self.admin.monitordata:
             # no data monitoring, but seconds is unknown.
-            log.msg('PONG from: {} (heartbeat response)'.format(user))
+            # log it if --noheartbeat isn't being used.
+            if not self.admin.noheartbeatlog:
+                log.msg('PONG from: {} (heartbeat response)'.format(user))
 
     def privmsg(self, user, channel, message):
         """ Handles personal and channel messages.
@@ -459,6 +475,30 @@ class PyValIRCProtocol(irc.IRCClient):
         # Save the last command-handled time for next time.
         self.admin.last_handle = datetime.now()
         self.admin.last_nick = nick
+
+    def respond_znc_challenge(self, user, msg):
+        """ Respond to a ZNC auth challenge.
+            This currently only works if no key is set.
+
+            When an admin is using a ZNC bouncer, and has *autoop enabled,
+            pyval can be added as an 'autoop' user.
+            When pyval joins a channel setup for autoop ZNC will send a
+            challenge (NOTICE !ZNCAO CHALLENGE <challenge_text>).
+            This will automatically respond with:
+                '!ZNCAO RESPONSE <md5(challenge_text)>'
+
+            It will not handle keys. 
+            Pyval will need to connect to a BNC bouncer so ZNC can handle the 
+            keys itself.
+        """
+
+        if user and msg:
+            challenge = msg.split()[-1]
+            response = self.md5(challenge)
+            self.notice(user, '!ZNCAO RESPONSE {}'.format(response))
+
+        # No user/message was provided.
+        return None
 
     def sendLine(self, line):
         """ Send line, catch what is being sent for logs. """
@@ -619,16 +659,12 @@ if __name__ == '__main__':
     # Write pid file.
     write_pidfile()
     
-    # Parse server/port settings from cmdline.
-    if main_argd['--server']:
-        servername = main_argd['--server']
-    else:
-        servername = 'irc.freenode.net'
-    if main_argd['--port']:
-        portnum = main_argd['--port']
-    else:
-        portnum = '6667'
+    # Parse server/port settings from cmdline, or set defaults.
+    servername = main_argd['--server'] or 'irc.freenode.net'
+    portnum = main_argd['--port'] or '6667'
+
     try:
+        # validate user's port number (redundant when no --port was given)
         int(portnum)
     except ValueError:
         log.msg('Invalid port number given!: {}'.format(main_argd['--port']))
@@ -638,6 +674,7 @@ if __name__ == '__main__':
     serverstr = 'tcp:{}:{}'.format(servername, portnum)
 
     # Global factory instance, clients need to call 'resetDelay' on connect.
+    # main() creates the instance.
     factory = None
     # Start irc client.
     task.react(main, [serverstr, main_argd])

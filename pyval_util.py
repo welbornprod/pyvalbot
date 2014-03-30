@@ -7,7 +7,7 @@
 
 NAME = 'PyVal'
 VERSION = '1.0.6'
-VERSIONX = '5'
+VERSIONX = '7'
 VERSIONSTR = '{} v. {}-{}'.format(NAME, VERSION, VERSIONX)
 
 DAYS = {i: v for i, v in enumerate([
