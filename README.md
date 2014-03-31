@@ -15,16 +15,6 @@ Requirements:
  pyval looks for `pypy-sandbox` in `/usr/bin`.
  
 
-- **pastebinit**
- package found in debian/ubuntu distros.
-
- cmd-line utility to pastebin content when the output limit for chat is exceeded
- 
- as of right now, http://paste.pound-python.org is used.
- 
- pyval looks for pastebinit in `/usr/bin`.
-
-
 - **Twisted** python module. 
 
  `twisted.internet` is used for the irc bot.
@@ -185,13 +175,13 @@ To get long output (there is a time limit on executing code):
 
     PyValUser: !py for i in range(65):\n    print('test' * 55)
         pyval: cjwelborn, testtesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttest
-               full: http://paste.pound-python.org/show/AcDrJg9NszeyXmxcOKBI/
+               - goto: http://welbornprod.com/paste?id=xxxx
 
-Long output is sent to a pastebin, but even then it is truncated.
+Long output is sent to my paste site, but even then it is truncated.
 You can get up to 65 lines of output, each line must not exceed ~240 characters.
 
-This limit is to ease the bandwidth used on the pastebin site. I don't want to be responsible for the abuse of
-pastebins.
+This limit is to ease the bandwidth used on the paste site. I don't it filling up
+with 1000+ lines of junk for every paste.
 
 If you are trying to evaluate honest code in the sandbox and must have the full output, then you should probably download PyVal and run PyValExec yourself with `--raw` on your own machine.
 
@@ -200,7 +190,7 @@ Tests:
 
 Coverage is not where it should be, but if all tests pass then basic functionality should be okay.
 As of right now, the tests confirm existence of required third-party executables,
-confirm `pastebinit` functionality, and basic code execution.
+confirm paste site functionality, and basic code execution.
 
 Tests are `unittest`-based, run them with your favorite test runner for python
 (`pytest`, `nose`, etc.).
@@ -211,6 +201,9 @@ Any configuration/dependency errors should show up right away and give you a hin
 Updates:
 --------
 
+Version 1.0.7:
+ - Switched to welbornprod.com/paste for paste bin. (removes pastebinit requirement)
+ 
 Version 1.0.6:
 
  - Added channel tracking, admins can list current channels with the `channels` command.

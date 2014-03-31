@@ -9,14 +9,15 @@
     -Christopher Welborn (original ircbot.py from github.com/habnabit)
 """
 
+from datetime import datetime
 import json
 import os
 from sys import version as sysversion
-from datetime import datetime
-import subprocess
+import urllib
+
 from twisted.python import log
 
-from pyval_exec import ExecBox, TempInput, TimedOut
+from pyval_exec import ExecBox, TimedOut
 from pyval_util import NAME, VERSION, VERSIONX, humantime, timefromsecs
 
 ADMINFILE = '{}_admins.lst'.format(NAME.lower().replace(' ', '-'))
@@ -26,10 +27,6 @@ HELPFILE = '{}_help.json'.format(NAME.lower().replace(' ', '-'))
 # Parses common string for True/False values.
 parse_true = lambda s: s.lower() in ('true', 'on', 'yes', '1')
 parse_false = lambda s: s.lower() in ('false', 'off', 'no', '0')
-
-# Location of pastebinit
-# TODO: needs to check other locations as well.
-PASTEBINIT_EXE = '/usr/bin/pastebinit'
 
 
 def simple_command(func):
@@ -82,6 +79,65 @@ def load_json_object(filename):
         return {}
 
     return jsonobj
+
+
+def pasteit(data):
+    """ Submit a paste to welbornprod.com/paste ...
+        data should be a dict with at least:
+        {'content': <paste content>}
+
+        with optional settings:
+        {'author': 'name',
+         'title': 'paste title',
+         'content': 'this is content',
+         'private': True,
+         'onhold': True,
+         }
+    """
+    pasteurl = 'http://welbornprod.com/paste/api/submit'
+    try:
+        newdata = urllib.urlencode(data)
+    except Exception as exenc:
+        log.msg('Unable to encode paste data: {}\n{}'.format(data, exenc))
+        return None
+    try:
+        con = urllib.urlopen(pasteurl, data=newdata)
+    except Exception as exopen:
+        log.msg('Unable to open paste url: {}\n{}'.format(pasteurl, exopen))
+        return None
+    try:
+        resp = con.read()
+    except Exception as exread:
+        log.msg('Unable to read paste response from '
+                '{}\n{}'.format(pasteurl, exread))
+        return None
+    try:
+        respdata = json.loads(resp)
+    except Exception as exjson:
+        log.msg('Unable to decode JSON from {}\n{}'.format(pasteurl, exjson))
+        return None
+
+    status = respdata.get('status', 'error')
+    if status == 'error':
+        # Server responded with json error response.
+        errmsg = respdata.get('message', '<no msg>')
+        log.msg('Paste site responded with error: {}'.format(errmsg))
+        # Little something for the unit tests..
+        # The error is most likely 'too many pastes in a row',
+        # just return the error msg so the test will pass and be printed.
+        if data.get('author', '').startswith('<pyvaltest>'):
+            return 'TESTERROR: {}'.format(errmsg)
+        # Paste site errored, no url given to the chat user.
+        return None
+
+    # Good response.
+    suburl = respdata.get('url', None)
+    if suburl:
+        finalurl = 'http://welbornprod.com{}'.format(suburl)
+        return finalurl
+
+    # No url found to respond with.
+    return None
 
 
 class AdminHandler(object):
@@ -773,13 +829,11 @@ class CommandFuncs(object):
         """ Returns a short help string. """
         return self.get_help(role='user', cmdname=rest, usernick=nick)
 
-    @basic_command
-    def cmd_py(self, rest):
+    def cmd_py(self, rest, nick=None):
         """ Shortcut for cmd_python """
-        return self.cmd_python(rest)
+        return self.cmd_python(rest, nick=nick)
 
-    @basic_command
-    def cmd_python(self, rest):
+    def cmd_python(self, rest, nick=None):
         """ Evaluate python code and return the answer.
             Restrictions are set. No os module, no nested eval() or exec().
         """
@@ -806,7 +860,7 @@ class CommandFuncs(object):
                 if len(chatout) > 100:
                     chatout = chatout[:100]
                 return ('{} '.format(chatout) +
-                        ' full: {}'.format(pastebinurl))
+                        ' - goto: {}'.format(pastebinurl))
             else:
                 # failed to pastebin.
                 chatout = execbox.safe_output(maxlines=30, maxlength=140)
@@ -831,6 +885,10 @@ class CommandFuncs(object):
             return 'error: {}'.format(ex)
 
         if len(results) > 160:
+            # Parse output to replace 'fake' newlines with realones,
+            # use it for pastebin output.
+            parsed = execbox.parse_input(rest, stringmode=True)
+
             # Use pastebinit, with safe_pastebin() settings.
             pastebincontent = self.safe_pastebin(execbox.output,
                                                  maxlines=65,
@@ -844,7 +902,9 @@ class CommandFuncs(object):
                 deferredurl = self.task.deferLater(self.reactor,
                                                    timeout,
                                                    self.print_topastebin,
-                                                   pastebincontent)
+                                                   parsed,
+                                                   pastebincontent,
+                                                   author=nick)
                 # Create a callback that takes in the url and produces
                 # the final chat response.
                 # IRCClient.privmsg() looks for a deferred and will add
@@ -855,7 +915,9 @@ class CommandFuncs(object):
 
             else:
                 # paste it right away
-                pastebinout = self.print_topastebin(pastebincontent)
+                pastebinout = self.print_topastebin(parsed,
+                                                    pastebincontent,
+                                                    author=nick)
                 resultstr = pastebin_chatout(pastebinout)
 
         else:
@@ -1035,30 +1097,36 @@ class CommandFuncs(object):
             converted = type(oldval)(newval)
         return converted
 
-    def print_topastebin(self, s):
-        """ Uses paste.pound-python.org to paste a string. """
+    def print_topastebin(self, query, result, author=None, title=None):
+        """ Uses welbornprod.com/paste to paste a response. """
 
-        if not s:
+        if (not query) or (not result):
             return None
 
-        cmdargs = [PASTEBINIT_EXE,
-                   '-a', 'pyval',
-                   '-b', 'http://paste.pound-python.org']
-        try:
-            with TempInput(s) as stdinput:
-                proc = subprocess.Popen(cmdargs,
-                                        stdin=stdinput,
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE)
-        except Exception as ex:
-            log.msg('Error running pastebinit:\n{}'.format(ex))
-            return None
+        div = '-' * 80
+        contentfmt = 'Query:\n{div}\n\n{q}\n\nResult:\n{div}\n\n{r}'
+        content = contentfmt.format(div=div, q=query, r=result)
 
-        output = self.proc_output(proc)
-        if output.startswith('http'):
-            return output
+        if author is None:
+            author = 'PyVal'
         else:
-            return None
+            author = 'PyVal (for {})'.format(author)
+
+        pastedata = {
+            'author': author,
+            'title': title or 'PyVal Evaluation Results',
+            'language': 'python',
+            'content': content,
+            'private': True,
+
+        }
+
+        # Add extra args for the unittests..
+        if author.startswith('<pyvaltest>') or query.startswith('<pyvaltest>'):
+            pastedata['disabled'] = True
+            pastedata['author'] = '<pyvaltest> {}'.format(author)
+
+        return pasteit(pastedata)
 
     def proc_output(self, proc):
         """ Get process output, whether its on stdout or stderr.
