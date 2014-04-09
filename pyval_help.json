@@ -40,6 +40,22 @@
         "args": null,
         "desc": "Show current channels that pyval is in."
         },
+    "configget": {
+        "args": "<option>",
+        "desc": "Get a config option's value. Certain options are hidden from chat."
+        },
+    "configlist": {
+        "args": null,
+        "desc": "List current config."
+        },
+    "configsave": {
+        "args": null,
+        "desc": "Save current command-line options to permanent config."
+        },
+    "configset": {
+        "args": "<option> <value>",
+        "desc": "Set a config option's value. String values only for now. Remove options by passing - as the value."
+        },
     "getattr": {
         "args": "<attribute>",
         "desc": "Retrieve the value of a pyval CommandFuncs  attribute. (ex: admins.channels)"

@@ -15,6 +15,7 @@ import os
 from sys import version as sysversion
 import urllib
 
+from easysettings import EasySettings
 from twisted.python import log
 
 from pyval_exec import ExecBox, TimedOut
@@ -59,6 +60,46 @@ def basic_command(func):
     def inner(self, *args, **kwargs):
         return func(self, *args)
     return inner
+
+
+def block_dict_val(data, blockedlst, value=None):
+    """ Block certain dict/config values from being seen.
+        Replaces a keys value if any strings in blockedlst are found.
+        Strings are found if they start or end with any string in the
+        blocked list.
+        Values are replaces with the 'value' argument.
+
+        This is meant to be used with string representations of dicts.
+        The original data is unchanged, the changed version is returned.
+
+        Arguments:
+            data  : dict or EasySetting instance.
+            blockedlst  : Tuple of strings, if found in a key it is blocked.
+            value       : New value for blocked items. Defaults to: '********'
+
+    """
+    if isinstance(data, dict):
+        d = data
+    elif isinstance(data, EasySettings):
+        d = data.settings
+    else:
+        # Not the correct type to be blocked.
+        return data
+
+    if value is None:
+        # Default value for blocked vlaues.
+        value = '********'
+
+    # Block all 'password/pw' values from dict/settings...
+    newdata = {}
+    for k, v in d.items():
+        keystr = str(k)
+        if keystr.startswith(blockedlst) or keystr.endswith(blockedlst):
+            newdata[k] = value
+        else:
+            newdata[k] = v
+
+    return newdata
 
 
 def load_json_object(filename):
@@ -380,6 +421,37 @@ class AdminHandler(object):
 
         return load_json_object(HELPFILE)
 
+    def save_config(self):
+        """ Save config settings to disk.
+            Returns the number of items changed/saved.
+            Returns None on failure.
+        """
+        if not hasattr(self, 'argd'):
+            log.msg('Unable to save config, admin.argd not found!')
+            return None
+        if not hasattr(self, 'config'):
+            log.msg('Unable to save config, admin.config not found!')
+            return None
+
+        changecnt = 0
+        for argopt, argval in self.argd.items():
+            configopt = argopt.strip('--')
+            configval = self.config.get(configopt, default=None)
+            if argval and (argval != configval):
+                # New config option.
+                self.config.set(configopt, argval)
+                changecnt += 1
+
+        if changecnt > 0:
+            if self.config.save():
+                # Save was a success.
+                return changecnt
+            # Bad save.
+            return None
+        else:
+            # No items to save.
+            return 0
+
 
 class CommandHandler(object):
 
@@ -592,6 +664,67 @@ class CommandFuncs(object):
         return 'current channels: {}'.format(', '.join(self.admin.channels))
 
     @basic_command
+    def admin_configget(self, rest):
+        """ Retrieve value for a config setting. """
+
+        rest = rest.strip()
+        if not rest:
+            return 'usage: {}configget <option>'.format(self.admin.cmdchar)
+
+        val = self.admin.config.get(rest, '__NOTSET__')
+        if val == '__NOTSET__':
+            return '{}: <not set>'.format(rest)
+        
+        # Filter some config settings (dont want passwords sent to chat)
+        blocked = ('pw', 'password')
+        if rest.startswith(blocked) or rest.endswith(blocked):
+            return '{}: ********'.format(rest)
+
+        # Value is ok to send to chat.
+        return '{}: {}'.format(rest, val)
+
+    @simple_command
+    def admin_configlist(self):
+        """ List current config. Filters certain items from chat. """
+
+        return self.admin_getattr('admin.config')
+
+    @simple_command
+    def admin_configsave(self):
+        """ Save the current config (cmdline options) to disk. """
+        saved = self.admin.save_config()
+        if saved is None:
+            return 'unable to save config.'
+        else:
+            return 'saved {} new config settings.'.format(saved)
+
+    @basic_command
+    def admin_configset(self, rest):
+        """ Set value for a config setting. """
+
+        usagestr = ('usage: '
+                    '{}configset <option> <value>').format(self.admin.cmdchar)
+        rest = rest.strip()
+        if not rest:
+            return usagestr
+
+        args = rest.split(' ')
+        if len(args) < 2:
+            # Not enough args.
+            return usagestr
+
+        opt, val = args[0], ' '.join(args[1:])
+
+        if val == '-':
+            # Have to pass - to blank-out config settings.
+            val = None
+        if self.admin.config.setsave(opt, val):
+            return 'saved {}: {}'.format(opt, val)
+
+        # Failure.
+        return 'unable to save: {}: {}'.format(opt, val)
+
+    @basic_command
     def admin_getattr(self, rest):
         """ Return value for attribute. """
         if not rest.strip():
@@ -600,6 +733,13 @@ class CommandFuncs(object):
         parent, attrname, attrval = self.parse_attrstr(rest)
         if attrname is None:
             return 'no attribute named: {}'.format(rest)
+
+        # Block certain config attributes from being printed.
+        if ('password' in attrname) or attrname.endswith('pw'):
+            attrval = '********'
+        elif 'config' in rest:
+            # Block password config from chat.
+            attrval = block_dict_val(attrval, ('password', 'pw'))
 
         attrval = str(attrval)
         if len(attrval) > 250:
@@ -801,7 +941,13 @@ class CommandFuncs(object):
     def admin_stats(self):
         """ Return simple stats info. """
         uptime = timefromsecs(self.admin.get_uptime())
-        return 'uptime: {}, handled: {}'.format(uptime, self.admin.handled)
+        statslst = (
+            'uptime: {}'.format(uptime),
+            'handled: {}'.format(self.admin.handled),
+            'banned: {}'.format(len(self.admin.banned)),
+            'warned: {}'.format(len(self.admin.banned_warned)),
+        )
+        return ', '.join(statslst)
 
     @basic_command
     def admin_unban(self, rest):
@@ -890,9 +1036,7 @@ class CommandFuncs(object):
             parsed = execbox.parse_input(rest, stringmode=True)
 
             # Use pastebinit, with safe_pastebin() settings.
-            pastebincontent = self.safe_pastebin(execbox.output,
-                                                 maxlines=65,
-                                                 maxlength=240)
+            pastebincontent = self.safe_pastebin(execbox.output)
             if self.admin.handlingcount > 1:
                 # Delay this pastebin call based on the handling count.
                 timeout = 3 * self.admin.handlingcount
@@ -1104,8 +1248,8 @@ class CommandFuncs(object):
             return None
 
         div = '-' * 80
-        contentfmt = 'Query:\n{div}\n\n{q}\n\nResult:\n{div}\n\n{r}'
-        content = contentfmt.format(div=div, q=query, r=result)
+        contentfmt = '{dv}\nQuery:\n{dv}\n\n{q}\n\n{dv}\nResult:\n{dv}\n\n{r}'
+        content = contentfmt.format(dv=div, q=query, r=result)
 
         if author is None:
             author = 'PyVal'
@@ -1165,7 +1309,7 @@ class CommandFuncs(object):
 
         return output.strip('\n')
 
-    def safe_pastebin(self, s, maxlines=65, maxlength=240):
+    def safe_pastebin(self, s, maxlines=300, maxlength=400):
         """ Format string for safe pastebin pasting.
             maxlines is the limit of lines allowed.
             maxlength is the limit allowed for each line.

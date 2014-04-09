@@ -3,3 +3,4 @@
 pyval_pid
 .coverage
 release
+*.conf
