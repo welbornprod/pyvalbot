@@ -891,8 +891,6 @@ if __name__ == '__main__':
     # Parse server/port settings from cmdline, or set defaults.
     servername = get_config('server', default='irc.freenode.net')
     portnum = get_config('port', default='6667')
-    print("SERVER: {}".format(servername))
-    print('PORT: {}'.format(portnum))
 
     try:
         # validate user's port number (redundant when no --port was given)
