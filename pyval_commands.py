@@ -19,7 +19,13 @@ from easysettings import EasySettings
 from twisted.python import log
 
 from pyval_exec import ExecBox, TimedOut
-from pyval_util import NAME, VERSION, VERSIONX, humantime, timefromsecs
+from pyval_util import (
+    NAME,
+    VERSION,
+    VERSIONX,
+    get_args,
+    humantime,
+    timefromsecs)
 
 ADMINFILE = '{}_admins.lst'.format(NAME.lower().replace(' ', '-'))
 BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
@@ -930,12 +936,20 @@ class CommandFuncs(object):
             newval = '{} ...truncated'.format(newval[:250])
         return '{} = {}'.format(attrstr, newval)
 
-    @simple_command
-    def admin_shutdown(self):
+    @basic_command
+    def admin_shutdown(self, rest):
         """ Shutdown the bot. """
-        log.msg('Shutting down...')
-        self.admin.quit(message='shutting down...')
-        return None
+        userargs = rest.strip()
+        default = 'No message given.'
+        if userargs:
+            quitmsg = rest
+        else:
+            quitmsg = 'Shutting down...'
+        finalmsg = 'Shutting down: {}'.format(quitmsg if userargs else default)
+        log.msg(finalmsg)
+        self.admin.quit(message=quitmsg)
+        # Unreachable code.
+        return finalmsg
 
     @simple_command
     def admin_stats(self):
@@ -987,6 +1001,9 @@ class CommandFuncs(object):
         if not rest.strip():
             # No input.
             return None
+        
+        # Parse command arguments and trim them from the command.
+        argd, rest = get_args(rest, (('-p', '--paste'),))
 
         def pastebin_chatout(pastebinurl):
             """ Callback for deferred print_topastebin.
@@ -1030,7 +1047,7 @@ class CommandFuncs(object):
         except Exception as ex:
             return 'error: {}'.format(ex)
 
-        if len(results) > 160:
+        if argd['--paste'] or (len(results) > 160):
             # Parse output to replace 'fake' newlines with realones,
             # use it for pastebin output.
             parsed = execbox.parse_input(rest, stringmode=True)
@@ -1259,7 +1276,7 @@ class CommandFuncs(object):
         pastedata = {
             'author': author,
             'title': title or 'PyVal Evaluation Results',
-            'language': 'python',
+            'language': 'Python',
             'content': content,
             'private': True,
 
