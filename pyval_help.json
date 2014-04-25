@@ -123,12 +123,12 @@
         "desc": "list commands or show command help."
         },
     "py": {
-        "args": "<python code>",
-        "desc": "evaluates python code through pypy-sandbox."
+        "args": "[--paste] <python code>",
+        "desc": "evaluates python code through pypy-sandbox. force output to the pastebin with -p or --paste."
         },
     "python": {
-        "args": "<python code>",
-        "desc": "evaluates python code through pypy-sandbox."
+        "args": "[--paste] <python code>",
+        "desc": "evaluates python code through pypy-sandbox. force output to the pastebin with -p or --paste."
         },
     "pyval": {
         "args": "<message>",
