@@ -68,7 +68,7 @@ CONFIGFILE = '{}.conf'.format(NAME.lower().replace(' ', '_'))
 CONFIG = EasySettings(CONFIGFILE)
 CONFIG.name = NAME
 CONFIG.version = VERSION
-
+SECRETCONFIGS = ('password', 'loginpw')
 USAGESTR = """{versionstr}
 
     Usage:
