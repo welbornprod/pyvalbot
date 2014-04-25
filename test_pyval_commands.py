@@ -30,6 +30,10 @@ class NoCommand(object):
 
 class TestCommandFuncs(unittest.TestCase):
 
+    """ Test basic functionality of pyval_commands.
+        This includes AdminHandler, CommandHandler, and CommandFuncs.
+    """
+
     def fail_nocmd(self, nocmd):
         """ Fail due to NoCommand. Pass a NoCommand in. """
 
@@ -127,3 +131,6 @@ class TestCommandFuncs(unittest.TestCase):
         self.assertIsNotNone(pastebinurl,
                              msg='valid string should produce a paste bin url')
         print('test_print_topastebin - Url: {}'.format(pastebinurl))
+
+if __name__ == '__main__':
+    unittest.main()
