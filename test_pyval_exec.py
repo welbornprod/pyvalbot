@@ -53,4 +53,4 @@ class TestExec(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    sys.exit(unittest.main(argv=sys.argv))
+    unittest.main()
