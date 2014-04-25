@@ -180,7 +180,7 @@ To get long output (there is a time limit on executing code):
 Long output is sent to my paste site, but even then it is truncated.
 You can get up to 65 lines of output, each line must not exceed ~240 characters.
 
-This limit is to ease the bandwidth used on the paste site. I don't it filling up
+This limit is to ease the bandwidth used on the paste site. I don't want it filling up
 with 1000+ lines of junk for every paste.
 
 If you are trying to evaluate honest code in the sandbox and must have the full output, then you should probably download PyVal and run PyValExec yourself with `--raw` on your own machine.
