@@ -5,9 +5,11 @@
     Holds globally shared info about pyval and utility functions.
 """
 
+import re
+
 NAME = 'PyVal'
 VERSION = '1.0.7'
-VERSIONX = '1'
+VERSIONX = '2'
 VERSIONSTR = '{} v. {}-{}'.format(NAME, VERSION, VERSIONX)
 
 DAYS = {i: v for i, v in enumerate([
@@ -98,3 +100,49 @@ def timefromsecs(secs, label=True):
     # Days, hours, minutes, and seconds.
     fmtstr = '{}d:{}h:{}m:{}s' if label else '{}:{}:{}:{}'
     return fmtstr.format(days, hours, minutes, seconds)
+
+
+def get_args(s, arglist):
+    """ Grab arguments from the start of a string,
+        trim them from the string and return a dict of {argname: (arg found?)}.
+        This only grabs args from the beginning of the string.
+        So things like this can be used: "--paste print('--help')"
+
+        Expects a string and a tuple of:
+            (('-s1', '--long1'), ('-s2', '--long2'))
+        Returns:
+            (argdict, trimmed_string)
+
+        Example:
+            >>> get_args('-r testing this', (('-r', '--reverse'),)
+                ({'--reverse': True}, 'testing this')
+
+            argdict, s = get_args('-r blah.', (('-r', '--re'), ('-p', '--pr')))
+            assert argdict == {'--re': True, '--pr': False}
+            assert s == 'blah.'
+    """
+    if not (s and arglist):
+        return {}, s
+    # Map that will convert a short option into a long one.
+    flagmap = {opt1: opt2 for opt1, opt2 in arglist}
+    # Build a base dict, it holds all long options with default value of False.
+    argdict = {opt2: False for _, opt2 in arglist}
+    # Build a single regex pattern to match any arg at the start of the string.
+    formatopt = lambda opts: '((^{})|(^{}))'.format(opts[0], opts[1])
+    argpat = re.compile('|'.join(formatopt(opts) for opts in arglist))
+    # Find any arg that matches. Save it, strip it, and try another.
+    flagmatch = argpat.match(s)
+    while flagmatch:
+        # Strip it.
+        s = argpat.sub('', s).lstrip()
+        # Save it to the argdict.
+        foundopt = flagmatch.group()
+        if foundopt in flagmap:
+            # short option, map to long name.
+            argdict[flagmap[foundopt]] = True
+        else:
+            # long option. no mapping needed.
+            argdict[foundopt] = True
+        # Try another match.
+        flagmatch = argpat.match(s)
+    return argdict, s
