@@ -4,3 +4,4 @@ pyval_pid
 .coverage
 release
 *.conf
+pyval_upstart*

@@ -32,7 +32,16 @@
                               Either a channel, or a user. Functions may return
                               None if no response is needed.
 
-    Original Twisted basic bot code borrowed from github.com/habnabit.
+    Original Twisted basic bot code borrowed from habnabit.
+        Original ircbot.py from habnabit:
+            https://gist.github.com/habnabit/5823693
+
+        Also hosted at mine in case of future removal:
+            https://gist.github.com/welbornprod/9612828
+
+        ..much has been added since then, but it gave me a base to start from.
+        ..i just want to give credit where it is due.
+
     Sandboxing is done by pypy-sandbox (pypy.org)
 
     -Christopher Welborn 2013-2014

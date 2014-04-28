@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""ircbot_commands.py
+"""pyval_commands.py
 
-    Handles commands for ircbot.py, separate from the rest of the other
+    Handles commands for pyvalbot.py, separate from the rest of the other
     irc bot functionality to prevent mess.
 
-    -Christopher Welborn (original ircbot.py from github.com/habnabit)
+    -Christopher Welborn 
+
 """
 
 from datetime import datetime
