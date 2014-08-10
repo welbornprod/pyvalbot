@@ -1,24 +1,24 @@
 PyVal
 =====
 
-Python Evaluation Bot for IRC (using PyPy-Sandbox, Twisted, and Python 2.7) 
+Python Evaluation Bot for IRC (using PyPy-Sandbox, Twisted, and Python 2.7)
 
-Requirements: 
+Requirements:
 -------------
 
 - **python-pypy.sandbox** or **python-pypy.translator.sandbox**
  package found in debian/ubuntu distros.
- 
- this package provides the prebuilt `pypy-sandbox` executable 
- which is used to by pyval to run code safely.  
- 
- pyval looks for `pypy-sandbox` in `/usr/bin`.
- 
 
-- **Twisted** python module. 
+ this package provides the prebuilt `pypy-sandbox` executable
+ which is used to by pyval to run code safely.
+
+ pyval looks for `pypy-sandbox` in `/usr/bin`.
+
+
+- **Twisted** python module.
 
  `twisted.internet` is used for the irc bot.
- 
+
 
 - **Python 2.7**
 
@@ -36,7 +36,7 @@ The info in this README and the project page may not always be in sync.
 
 By default the bot connects to `irc.freenode.net`.
 
-The bot joins `#pyval` on succesful connection. (channels can be set with `--channels` also, 
+The bot joins `#pyval` on succesful connection. (channels can be set with `--channels` also,
 see <a href='#example-bot-usage'>Example Bot Usage</a>.)
 
 Nickname is set to *pyval*, which is registered to me so you will want to change it.
@@ -73,7 +73,7 @@ Example Bot Usage:
 To run the full pyval irc bot:
 
     ./pyvalbot.py --nick MyBot --channels #mychan1,#mychan2
-    
+
 There is also a symlink setup (`pyval`), to view all options you can do this:
 
     ./pyval --help
@@ -89,13 +89,13 @@ To test the functionality of the sandbox without connecting to irc:
 
     $./pyval_exec.py "print('okay')"
      Content: print('okay')
-     
+
      Results: (safe_output()):
          okay
 
 Notice the `safe_output()`, it means that newlines are escaped and long output is truncated.
 
-         
+
 PyValExec also has a symlink, and an option to view raw output with `--raw`:
 
     $./pyvalexec "print('\\\\n'.join([str(i) for i in range(3)]))" -r
@@ -148,7 +148,7 @@ Or just:
     if __name__ != '__pyval__':
         print('This script is designed to run in PyValExec's sandbox!')
         sys.exit(1)
-    
+
 
 Example Chat Usage:
 -------------------
@@ -203,12 +203,17 @@ Updates:
 
 Version 1.0.7:
  - Switched to welbornprod.com/paste for paste bin. (removes pastebinit requirement)
- 
+
 Version 1.0.6:
 
  - Added channel tracking, admins can list current channels with the `channels` command.
  - Added `partall` command to part all current channels. (must /msg pyval to rejoin, or restart the bot)
  - Changed `join`/`part` commands to accept a comma-separated list for multiple channels.
  - Added better logging, NOTICE and NickServ messages are automatically logged.
- - Added the ability to load scripts with PyValExec (__name__ is set to '__pyval__' for sandbox-detection) 
+ - Added the ability to load scripts with PyValExec (__name__ is set to '__pyval__' for sandbox-detection)
  - Added `adminhelp` descriptions, admins can now do `adminhelp [cmd]`.
+
+
+[Welborn Productions](http://welbornprod.com "welbornprod.com")
+
+[![I Love Open Source](http://www.iloveopensource.io/images/logo-lightbg.png)](http://www.iloveopensource.io/projects/53e6d33587659fce660044fb)
