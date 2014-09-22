@@ -9,7 +9,7 @@ import re
 
 NAME = 'PyVal'
 VERSION = '1.0.7'
-VERSIONX = '2'
+VERSIONX = '4'
 VERSIONSTR = '{} v. {}-{}'.format(NAME, VERSION, VERSIONX)
 
 DAYS = {i: v for i, v in enumerate([
@@ -32,13 +32,13 @@ def humantime(d, short=False):
             print(humantime(d))
             # prints: Wednesday, February 5 1:5:6pm
 
-        If no time is included in the datetime() (time zeroed out), 
+        If no time is included in the datetime() (time zeroed out),
         only the date string is returned.
 
         Arguments:
             d      :  A datetime() object with or without time included.
             short  : Use abbreviations if True, otherwise use proper names.
-                     Default: False 
+                     Default: False
     """
     if short:
         monthstr = '{}.'.format(MONTHS_SHORT[d.month])
