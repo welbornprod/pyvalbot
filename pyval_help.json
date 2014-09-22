@@ -1,7 +1,7 @@
 {
 "admin": {
     "adminadd": {
-        "args": "<nick>", 
+        "args": "<nick>",
         "desc": "Add an administrator by nick."
         },
     "adminhelp": {
@@ -11,6 +11,10 @@
     "adminlist": {
         "args": null,
         "desc": "List all current administrators."
+        },
+    "adminmsg": {
+        "args": "<msg>",
+        "desc": "Send a msg to all pyvalbot admins."
         },
     "adminreload": {
         "args": null,
@@ -39,6 +43,10 @@
     "channels": {
         "args": null,
         "desc": "Show current channels that pyval is in."
+        },
+    "chanmsg": {
+        "args": "<msg>",
+        "desc": "Send a msg to all channels pyvalbot is in."
         },
     "configget": {
         "args": "<option>",
