@@ -6,13 +6,14 @@
     Handles commands for pyvalbot.py, separate from the rest of the other
     irc bot functionality to prevent mess.
 
-    -Christopher Welborn 
+    -Christopher Welborn
 
 """
 
 from datetime import datetime
 import json
 import os
+import re
 from sys import version as sysversion
 import urllib
 
@@ -33,8 +34,15 @@ BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
 HELPFILE = '{}_help.json'.format(NAME.lower().replace(' ', '-'))
 
 # Parses common string for True/False values.
-parse_true = lambda s: s.lower() in ('true', 'on', 'yes', '1')
-parse_false = lambda s: s.lower() in ('false', 'off', 'no', '0')
+true_values = ('true', 'on', 'yes', '1')
+false_values = ('false', 'off', 'no', '0')
+bool_values = list(true_values)
+bool_values.extend(false_values)
+boolpat = re.compile('\[({})\]'.format('|'.join(bool_values)), re.IGNORECASE)
+intpat = re.compile('\[(\d+)\]')
+parse_true = lambda s: s.lower() in true_values
+parse_false = lambda s: s.lower() in false_values
+parse_bool = lambda s: parse_true(s[1:-1]) if boolpat.match(s) else None
 
 
 def simple_command(func):
@@ -193,6 +201,13 @@ class AdminHandler(object):
     """ Handles admin functions like bans/admins/settings. """
 
     def __init__(self, help_info=None):
+        # These are overwritten by the PyValIRCProtocol()
+        self.quit = None
+        self.sendLine = None
+        self.ctcpMakeQuery = None
+        self.do_action = None
+        self.handlinglock = None
+
         # Set startup time.
         self.starttime = datetime.now()
         # Current channels the bot is in.
@@ -205,6 +220,8 @@ class AdminHandler(object):
         self.monitor = False
         self.monitordata = False
         self.monitorips = False
+        # If this is true, privmsgs are forwarded to the admins.
+        self.forwardmsgs = True
         # List of admins/banned
         self.admins = self.admins_load()
         self.banned = self.ban_load()
@@ -326,7 +343,7 @@ class AdminHandler(object):
         else:
             # First warning.
             self.banned_warned[nick] = {'last': datetime.now(), 'count': 1}
-        
+
         # Warning count increased, not last warning or permaban yet.
         return 'slow down with your commands.'
 
@@ -459,6 +476,33 @@ class AdminHandler(object):
             # No items to save.
             return 0
 
+    def sendmsg_tochans(self, msgtext):
+        """ Send the same message to all channels pyvalbot is in. """
+        for chan in self.channels:
+            self.sendmsg(chan, msgtext)
+
+    def sendmsg_toadmins(self, msgtext, fromnick=None):
+        """ Sends a private message to all admins as pyvalbot.
+            Can be disabled by settings self.forwardsmsgs = False
+            If fromnick is set, it will be included in the message.
+        """
+        if fromnick:
+            msg = '{}: {}'.format(fromnick, msgtext)
+        else:
+            msg = '{}'.format(msgtext)
+
+        if self.forwardmsgs:
+            for adminnick in self.admins:
+                # Don't send the admin's own message to them.
+                if fromnick != adminnick:
+                    self.sendmsg(adminnick, msg)
+
+    def sendmsg(self, target, msgtext):
+        """ Send a private message as pyvalbot.
+            This is a shortcut to: self.sendLine('PRIVMSG target: msgtext')
+        """
+        self.sendLine('PRIVMSG {} :{}'.format(target, msgtext))
+
 
 class CommandHandler(object):
 
@@ -497,7 +541,7 @@ class CommandHandler(object):
 
         # Return callable function for command.
         return func
- 
+
     def parse_data(self, user, channel, msg):
         """ Parse raw data from privmsg().
             Logs messages if 'monitor' or 'monitorips' is set.
@@ -509,7 +553,7 @@ class CommandHandler(object):
                 channel     : (str) - channel where the msg came from.
                 msg         : (str) - content of the message.
         """
-       
+
         # Parse irc name, ip address from user.
         username, ipstr = self.parse_username(user)
         # Monitor incoming messages?
@@ -524,6 +568,7 @@ class CommandHandler(object):
             if not msg.startswith(self.admin.cmdchar):
                 # normal private msg sent directly to pyval.
                 log.msg('Message from {}: {}'.format(username, msg))
+                self.admin.sendmsg_toadmins(msg, fromnick=username)
 
         # Handle message
         if msg.startswith(self.admin.cmdchar):
@@ -553,7 +598,7 @@ class CommandHandler(object):
 class CommandFuncs(object):
 
     """ Holds only the command-handling functions themselves. """
-    
+
     def __init__(self, **kwargs):
         """ Keyword Arguments:
                 ** These are required. **
@@ -581,6 +626,15 @@ class CommandFuncs(object):
     def admin_adminlist(self):
         """ List current admins. """
         return self.admin.admins_list()
+
+    @basic_command
+    def admin_adminmsg(self, rest):
+        """ Send a message to all pyvalbot admins. """
+        if not rest.strip():
+            return 'Must give a message to send!'
+
+        self.admin.sendmsg_toadmins(rest)
+        return None
 
     @simple_command
     def admin_adminreload(self):
@@ -616,7 +670,7 @@ class CommandFuncs(object):
         msg = []
         if banned:
             msg.append('banned: {}'.format(', '.join(banned)))
-    
+
         if alreadybanned:
             msg.append('already banned: '
                        '{}'.format(', '.join(alreadybanned)))
@@ -671,6 +725,15 @@ class CommandFuncs(object):
         return 'current channels: {}'.format(', '.join(self.admin.channels))
 
     @basic_command
+    def admin_chanmsg(self, rest):
+        """ Send a msg to all channels pyvalbot is in. """
+        if not rest.strip():
+            return 'Must give a message to send!'
+
+        self.admin.sendmsg_tochans(rest)
+        return None
+
+    @basic_command
     def admin_configget(self, rest):
         """ Retrieve value for a config setting. """
 
@@ -681,7 +744,7 @@ class CommandFuncs(object):
         val = self.admin.config.get(rest, '__NOTSET__')
         if val == '__NOTSET__':
             return '{}: <not set>'.format(rest)
-        
+
         # Filter some config settings (dont want passwords sent to chat)
         blocked = ('pw', 'password')
         if rest.startswith(blocked) or rest.endswith(blocked):
@@ -725,6 +788,15 @@ class CommandFuncs(object):
         if val == '-':
             # Have to pass - to blank-out config settings.
             val = None
+        elif boolpat.match(val):
+            # Have a valid bool config value, use it.
+            val = parse_true(val[1:-1])
+        elif intpat.match(val):
+            try:
+                val = int(val[1:-1])
+            except (TypeError, ValueError):
+                return 'bad int value: {}'.format(val[1:-1])
+
         if self.admin.config.setsave(opt, val):
             return 'saved {}: {}'.format(opt, val)
 
@@ -836,7 +908,7 @@ class CommandFuncs(object):
             return 'need target and message.'
         target = msgparts[0]
         msgtext = ' '.join(msgparts[1:])
-        self.admin.sendLine('PRIVMSG {} :{}'.format(target, msgtext))
+        self.admin.sendmsg(target, msgtext)
         return None
 
     @basic_command
@@ -1002,7 +1074,7 @@ class CommandFuncs(object):
         if not rest.strip():
             # No input.
             return None
-        
+
         # Parse command arguments and trim them from the command.
         argd, rest = get_args(rest, (('-p', '--paste'),))
 
@@ -1107,7 +1179,7 @@ class CommandFuncs(object):
             when = int(when)
         except ValueError:
             return 'usage: {}saylater <seconds>'.format(self.admin.cmdchar)
-        
+
         d = self.defer.Deferred()
         # A small example of how to defer the reply from a command. callLater
         # will callback the Deferred with the reply after so many seconds.
@@ -1115,11 +1187,11 @@ class CommandFuncs(object):
         # Returning the Deferred here means that it'll be returned from
         # maybeDeferred in pyvalbot.PyValIRCProtocol.privmsg.
         return d
-    
+
     @simple_command
     def cmd_time(self):
         """ Retrieve current date and time. """
-        
+
         return humantime(datetime.now())
 
     @simple_command
@@ -1129,7 +1201,7 @@ class CommandFuncs(object):
         s = 'start: {}, up: {}'.format(humantime(self.admin.starttime),
                                        uptime)
         return s
-    
+
     @simple_command
     def cmd_version(self):
         """ Return pyval version, and sys.version. """
@@ -1225,7 +1297,7 @@ class CommandFuncs(object):
         return parent, aname, abase
 
     def parse_typestr(self, oldval, newval):
-        """ Returns correct type from string, 
+        """ Returns correct type from string,
             when given the original value.
             Example:
                 mybool = True
