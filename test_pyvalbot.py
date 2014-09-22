@@ -18,31 +18,19 @@ VERSIONS = {
 
 def check_versions(v1, v2):
     """ Compare two version strings.
-        Return -1 if v1 is less than v2.
-        Return 0 if v1 and v2 is the same.
-        Return 1 if v1 is greater than v2.
+        Returns:
+             -1 : if v1 < v2
+              0 : if v1 == v2
+              1 : if v1 > v2
 
         Raises ValueError on invalid version strings.
     """
     if not (v1 and v2):
         raise ValueError('Expecting 2 valid version-strings to compare.')
-
     elif v1 == v2:
         return 0
-    
-    try:
-        val1 = int(''.join(v1.split('.')))
-    except ValueError:
-        errdesc = 'Got: {}, Expecting: "X.X.X"'.format(v1)
-        raise ValueError('Invalid version string. {}'.format(errdesc))
-    
-    try:
-        val2 = int(''.join(v2.split('.')))
-    except ValueError:
-        errdesc = 'Got: {}, Expecting: "X.X.X"'.format(v2)
-        raise ValueError('Invalid version string. {}'.format(errdesc))
-    
-    return 1 if (val1 > val2) else -1
+
+    return 1 if (v1 > v2) else -1
 
 
 def import_failmsg(pkg, subpkgs=None, curver=None, exc=None):
@@ -118,7 +106,7 @@ class TestImports(unittest.TestCase):
 
                 errmsg = import_failmsg('easysettings',
                                         subpkgs=['EasySettings'],
-                                        curver=reqver)
+                                        curver=curver)
                 self.fail(errmsg)
 
     def test_twisted(self):
