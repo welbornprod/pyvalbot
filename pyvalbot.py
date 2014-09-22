@@ -65,7 +65,7 @@ from twisted.internet import defer, endpoints, protocol, reactor, task
 from twisted.python import failure, log  # noqa
 from twisted.words.protocols import irc
 
- 
+
 # Local stuff (Command Handler)
 from pyval_commands import AdminHandler, CommandHandler
 from pyval_util import NAME, VERSION, VERSIONSTR
@@ -73,8 +73,11 @@ from pyval_util import NAME, VERSION, VERSIONSTR
 SCRIPT = os.path.split(sys.argv[0])[1]
 
 BANFILE = '{}_banned.lst'.format(NAME.lower().replace(' ', '-'))
-CONFIGFILE = '{}.conf'.format(NAME.lower().replace(' ', '_'))
-CONFIG = EasySettings(CONFIGFILE)
+DEFAULT_CONFIGFILE = '{}.conf'.format(NAME.lower().replace(' ', '_'))
+DEFAULT_CONFIGFILE = os.path.join(sys.path[0], DEFAULT_CONFIGFILE)
+# Config file is loaded after checking args in main().
+# Alternate config may be used...
+CONFIG = EasySettings()
 CONFIG.name = NAME
 CONFIG.version = VERSION
 USAGESTR = """{versionstr}
@@ -82,9 +85,9 @@ USAGESTR = """{versionstr}
     Usage:
         {script} -h | -v
         {script} [options]
-        
+
     Options:
-        -a,--autosave              : Automatically save new command-lin
+        -a,--autosave              : Automatically save new command-line
                                      options to config file.
                                      (passwords are stored in plain text!)
         -b,--noheartbeat           : Don't log the heartbeat pongs.
@@ -95,8 +98,10 @@ USAGESTR = """{versionstr}
                                      Defaults to: !
         -D,--dumpconfig            : Print current config file settings.
         -d,--data                  : Log all sent/received data.
+        -f file,--config file      : Use the specified config file for this
+                                     session. (Disables autosave.)
         -h,--help                  : Show this message.
-        -i,--ips                   : Print all messages to log, 
+        -i,--ips                   : Print all messages to log,
                                      include ip addresses.
         -L pw,--loginpw pw         : Password  for the irc server,
                                      sent with /PASS <pw>.
@@ -112,12 +117,12 @@ USAGESTR = """{versionstr}
                                      Defaults to: irc.freenode.net
         -U name,--username name    : Username for server login.
         -v,--version               : Show {name} version.
-        
+
 """.format(name=NAME, versionstr=VERSIONSTR, script=SCRIPT)
 
 
 class PyValIRCProtocol(irc.IRCClient):
- 
+
     def __init__(self):
         self.argd = MAIN_ARGD
         # Main deferred, fired on fatal error or final disconnect.
@@ -133,7 +138,6 @@ class PyValIRCProtocol(irc.IRCClient):
         self.admin.monitordata = self.get_config('data', False)
         self.admin.monitorips = self.get_config('ips', False)
         self.admin.nickname = self.get_config('nick', 'pyval')
-
         self.admin.cmdchar = self.get_config('commandchar', '!')
         self.admin.noheartbeatlog = self.get_config('noheartbeat', False)
         # Give admin access to certain functions.
@@ -179,6 +183,16 @@ class PyValIRCProtocol(irc.IRCClient):
                                              reactor_=reactor,
                                              task_=task,
                                              adminhandler=self.admin)
+        # For setting the topic for our own channel if possible.
+        self.topicfmt = ''.join([
+            'Python Evaluation Bot (pyval) | ',
+            'Type {cc}py <code> or {cc}help [cmd] if {nick} is around. | ',
+            'Use \\n for actual newlines (Enter), or \\\\n for '
+            'escaped newlines.'
+        ])
+        self.topicmsg = self.topicfmt.format(
+            cc=self.admin.cmdchar,
+            nick=self.admin.nickname)
 
         # Save cmdline args to config.
         if self.get_config('autosave'):
@@ -340,16 +354,7 @@ class PyValIRCProtocol(irc.IRCClient):
         self.admin.channels.append(channel)
 
         if channel.strip('#') == self.nickname:
-            # Set topic to our own channel if possible.
-            topic = [
-                'Python Evaluation Bot (pyval) | ',
-                'Type {cc}py <code> or {cc}help [cmd] if {nick} is around. | ',
-                'Use \\n for actual newlines (Enter), or \\\\n for '
-                'escaped newlines.'
-            ]
-            topic = ''.join(topic).format(cc=self.admin.cmdchar,
-                                          nick=self.admin.nickname)
-            self.topic(channel, topic)
+            self.topic(channel, self.topicmsg)
 
     def kickedFrom(self, channel, kicker, message):
         """ Call when the bot is kicked from a channel. """
@@ -403,7 +408,7 @@ class PyValIRCProtocol(irc.IRCClient):
 
     def modeChanged(self, user, channel, enabled, modes, args):
         """ Called when a mode has changed for a user/channel.
-            Any mode that affects the bot is logged, 
+            Any mode that affects the bot is logged,
             whether it's from the server or another user.
         """
 
@@ -462,6 +467,9 @@ class PyValIRCProtocol(irc.IRCClient):
                     self.respond_znc_challenge(user, message)
                 noticefmt = 'NOTICE from {}: {}'
                 log.msg(noticefmt.format(user, message))
+                # Send private notice to admins.
+                adminmsg = 'NOTICE: {}'.format(message)
+                self.admin.sendmsg_toadmins(adminmsg, fromnick=user)
             else:
                 # Channel/server notice.
                 noticefmt = 'NOTICE from {} in {}: {}'
@@ -493,7 +501,7 @@ class PyValIRCProtocol(irc.IRCClient):
                 log.msg('This will affect the default channel!')
 
             # Default channel to join when none are supplied
-            chans = ['#{}'.format(self.nickname)]
+            chans = ['##{}'.format(self.nickname)]
 
         return chans
 
@@ -571,7 +579,7 @@ class PyValIRCProtocol(irc.IRCClient):
             # If the message triggers a command, then a function is returned to
             # handle it. If there is no function returned, then just return.
             func = self.commandhandler.parse_data(user, channel, message)
-            
+
             # Nothing returned from commandhandler, no response is needed.
             if not func:
                 return None
@@ -622,8 +630,8 @@ class PyValIRCProtocol(irc.IRCClient):
             This will automatically respond with:
                 '!ZNCAO RESPONSE <md5(challenge_text)>'
 
-            It will not handle keys. 
-            Pyval will need to connect to a BNC bouncer so ZNC can handle the 
+            It will not handle keys.
+            Pyval will need to connect to a BNC bouncer so ZNC can handle the
             keys itself.
         """
 
@@ -655,7 +663,7 @@ class PyValIRCProtocol(irc.IRCClient):
 
     def setArg(self, argname, argval):
         """ Function to call from other places, to set argd args. """
-        
+
         if self.argd:
             self.argd[argname] = argval
             log.msg('Set arg: {} = {}'.format(argname, argval))
@@ -713,8 +721,8 @@ class PyValIRCProtocol(irc.IRCClient):
 
     def _showError(self, failure):
         return failure.getErrorMessage()
-    
-    
+
+
 class PyValIRCFactory(protocol.ReconnectingClientFactory):
 
     """ Reconnecting client factory,
@@ -876,6 +884,16 @@ if __name__ == '__main__':
         # Bad config dump.
         sys.exit(1)
 
+    # Load config file, either default or user-specified.
+    CONFIGFILE = MAIN_ARGD['--config'] or DEFAULT_CONFIGFILE
+    try:
+        okconfig = CONFIG.load_file(CONFIGFILE)
+    except EnvironmentError as exconf:
+        print('\nError loading config: {}\n{}'.format(CONFIGFILE, exconf))
+    else:
+        configmsg = 'Loaded' if okconfig else 'Failed to load'
+        print('\n{} config file: {}'.format(configmsg, CONFIGFILE))
+
     # Start logging as soon as possible.
     # Open log file if --logfile is passed, (fallback to stderr on error)
     if get_config('logfile', default=False):
@@ -895,7 +913,7 @@ if __name__ == '__main__':
 
     # Write pid file.
     write_pidfile()
-    
+
     # Parse server/port settings from cmdline, or set defaults.
     servername = get_config('server', default='irc.freenode.net')
     portnum = get_config('port', default='6667')
