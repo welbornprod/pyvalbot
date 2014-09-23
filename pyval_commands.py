@@ -228,6 +228,8 @@ class AdminHandler(object):
         self.banned_warned = {}
         # Time of last response sent (rate-limiting/bans)
         self.last_handle = None
+        # The msg that was last sent.
+        self.last_msg = None
         # Last nick responded to (rate-limiting/bans)
         self.last_nick = None
         # Last command handled (dupe-blocking/rate-limiting)
@@ -501,7 +503,10 @@ class AdminHandler(object):
         """ Send a private message as pyvalbot.
             This is a shortcut to: self.sendLine('PRIVMSG target: msgtext')
         """
-        self.sendLine('PRIVMSG {} :{}'.format(target, msgtext))
+        if (self.last_nick, self.last_msg) != (target, msgtext):
+            self.sendLine('PRIVMSG {} :{}'.format(target, msgtext))
+            self.last_nick = target
+            self.last_msg = msgtext
 
 
 class CommandHandler(object):
