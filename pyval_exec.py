@@ -29,7 +29,7 @@
     Even though these errors might occur, it doesn't mean the bot will die.
     Code is evaluated in a subprocess and is timed. It will fail gracefully.
 """
-
+from __future__ import print_function
 from tempfile import SpooledTemporaryFile
 import multiprocessing
 import os
@@ -41,14 +41,20 @@ from pyval_util import VERSION
 
 NAME = 'PyValExec'
 SCRIPTNAME = os.path.split(sys.argv[0])[-1]
-DEBUG = ('-d' in sys.argv) or ('--debug' in sys.argv)
 
+# Allow debug early.
+if __name__ == '__main__':
+    # This -d conflicts with pyvalbot. Only use it when executed directly.
+    DEBUG = ('-d' in sys.argv) or ('--debug' in sys.argv)
+    print_debug = print
+else:
+    DEBUG = False
 
-def print_debug(s):
-    if DEBUG:
-        print(s)
+    def print_debug(*args, **kwargs):
+        None
 
-# Location for pypy-sandbox,
+# Location for pypy-sandbox.
+PYPYSANDBOX_EXE = None
 PATH = os.environ.get('PATH').split(':')
 if not PATH:
     print_debug('No $PATH variable set!')
