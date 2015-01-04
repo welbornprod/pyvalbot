@@ -41,9 +41,34 @@ from pyval_util import VERSION
 
 NAME = 'PyValExec'
 SCRIPTNAME = os.path.split(sys.argv[0])[-1]
+DEBUG = ('-d' in sys.argv) or ('--debug' in sys.argv)
+
+
+def print_debug(s):
+    if DEBUG:
+        print(s)
+
 # Location for pypy-sandbox,
-# TODO: needs to look for it in other locations as well.
-PYPYSANDBOX_EXE = os.path.join('/usr', 'bin', 'pypy-sandbox')
+PATH = os.environ.get('PATH').split(':')
+if not PATH:
+    print_debug('No $PATH variable set!')
+    PATH = (
+        '/usr/bin',
+        '/usr/local/bin',
+        os.path.expanduser('~/bin'),
+        os.path.expanduser('~/.local/bin'),
+        os.path.expanduser('~/local/bin')
+    )
+for dirname in PATH:
+    pypypath = os.path.join(dirname, 'pypy-sandbox')
+    if os.path.exists(pypypath):
+        print_debug('Found pypy-sandbox: {}'.format(pypypath))
+        PYPYSANDBOX_EXE = pypypath
+        break
+else:
+    print('\nUnable to find pypy-sandbox.')
+    print('Looked in:\n    {}'.format('\n    '.join(PATH)))
+    sys.exit(1)
 
 
 class ExecBox(object):
@@ -554,10 +579,7 @@ def main(args):
         print('\nReading from stdin, use EOF to run (Ctrl + D).\n')
         evalstr = sys.stdin.read()
 
-    # Get pyval_exec.debug setting from cmdline.
-    debug = argd['--debug']
-
-    if os.path.isfile(evalstr):
+    if (len(evalstr) < 256) and os.path.isfile(evalstr):
         # This is a filename, load the contents from it.
         filename = evalstr
         try:
@@ -582,7 +604,7 @@ def main(args):
         print('Content: {}\n'.format(evalpreview))
 
     e = ExecBox(evalstr)
-    e.debug = debug
+    e.debug = DEBUG
     try:
         output = e.execute(raw_output=argd['--raw'],
                            stringmode=stringmode,
