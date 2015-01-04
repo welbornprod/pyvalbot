@@ -19,7 +19,7 @@
         Known to crash python or cause problems, ignore the '# noqa'.
 
         eval() will fail with these strings in a normal interpreter:
-        
+
         SegFault (crashes python/pypy):
             (lambda fc=(lambda n: [c for c in ().__class__.__bases__[0].__subclasses__() if c.__name__ == n][0]):fc("function")(fc("code")(0,0,0,0,"KABOOM",(),(),(),"","",0,""),{})())() # noqa
 
@@ -69,13 +69,13 @@ class ExecBox(object):
         # Disabled if < 1.
         self.maxlines = 0
         self.maxlength = 0
-        
+
     def __str__(self):
         return self.output
 
     def __repr__(self):
         return self.output
-    
+
     def _dir(self, *args):
         """ Fake attributes for dir() NO LONGER USED """
         return [aname for aname in self._globals().keys()]
@@ -137,7 +137,7 @@ class ExecBox(object):
 
     def _exec(self, pipesend=None, stringmode=True):
         """ Execute actual code using pypy-sandbox/pyval_sandbox combo.
-            This method does not blacklist anything. 
+            This method does not blacklist anything.
             It runs whatever self.inputstr is set to.
 
             Arguments:
@@ -148,7 +148,7 @@ class ExecBox(object):
         """
         if not self.inputstr:
             self.error_return('No source.')
-        
+
         self.parsed = self.parse_input(self.inputstr, stringmode=stringmode)
 
         # Get locations for pypy-sandbox, sandbox dir, pyval_sandbox.
@@ -257,7 +257,7 @@ class ExecBox(object):
         s = s.replace('?(', 'print(')
         if ('\n' in s) and (not s.endswith('\n')):
                 # Make sure code ends with \n.
-                s = '{}\n'.format(s)
+            s = '{}\n'.format(s)
 
         return s
 
@@ -319,7 +319,7 @@ class ExecBox(object):
 
     def safe_output(self, maxlines=None, maxlength=None):
         """ Retrieves output safe for irc. """
-        
+
         maxlines = maxlines if maxlines is not None else self.maxlines
         maxlength = maxlength if maxlength is not None else self.maxlength
         if self.lasterror:
@@ -417,7 +417,7 @@ class TempInput(object):
         self.tempfile.write(self.inputstr)
         self.tempfile.seek(0)
         return self.tempfile
-    
+
     def __exit__(self, type_, value, traceback):
         self.tempfile.close()
         return False
@@ -443,17 +443,21 @@ def parse_args(args, argset):
 
     # Set default False values
     argdict = {o[1]: False for o in argset}
-    argcopy = args[:]
+    args = args[1:]
+    if not args:
+        # No args, everything will be set to False.
+        return [], argdict
+    trimmedargs = args[:]
     # Set True for found args.
     for shortopt, longopt in argset:
         if (shortopt in args) or (longopt in args):
             argdict[longopt] = True
-            while shortopt in argcopy:
-                argcopy.remove(shortopt)
-            while longopt in argcopy:
-                argcopy.remove(longopt)
+            while shortopt in trimmedargs:
+                trimmedargs.remove(shortopt)
+            while longopt in trimmedargs:
+                trimmedargs.remove(longopt)
 
-    return argcopy, argdict
+    return trimmedargs, argdict
 
 
 def print_blacklist():
@@ -471,28 +475,34 @@ def print_help(reason=None, show_options=True):
     usage_str = str.format(('{name} v. {ver}\n\n'
                             '    Usage:\n'
                             '        {script} -h | -p | -v\n'
-                            '        {script} [-b] [-d] [-r] evalcode\n'),
+                            '        {script} [-b] [-d] [-r] [evalcode]\n'),
                            name=NAME,
                            ver=VERSION,
                            script=SCRIPTNAME)
-    optionstr = ('    Options:\n'
-                 '        evalcode            : Code to evaluate/execute,\n'
-                 '                              or a file to read code from.\n'
-                 '        -b,--blacklist      : Use blacklist (testing).\n'
-                 '        -d,--debug          : Prints extra info before,\n'
-                 '                              during, and after execution.\n'
-                 '        -h,--help           : Show this message.\n'
-                 '        -p,--printblacklist : Print blacklisted strings.\n'
-                 '        -r,--raw            : Show unsafe, raw output.\n\n'
-                 '    Notes:\n'
-                 '        If a filename is passed, the name __main__ is not \n'
-                 '        set. So it may not run as expected.\n\n'
-                 '        It will run each statement in the file, but:\n'
-                 '            if __name__ == \'__main__\' will be False.\n\n'
-                 '        You can explicitly bypass this, but it may be\n'
-                 '        better to write a specific sandbox-friendly\n'
-                 '        script to test things out.\n'
-                 )
+    optionstr = '\n'.join((
+        '    Options:',
+        '        evalcode            : Code to evaluate/execute,',
+        '                              or a file to read code from.',
+        '                              stdin is used when not given.',
+        '        -b,--blacklist      : Use blacklist (testing).',
+        '        -d,--debug          : Prints extra info before,',
+        '                              during, and after execution.',
+        '        -h,--help           : Show this message.',
+        '        -p,--printblacklist : Print blacklisted strings and exit.',
+        '        -r,--raw            : Show unsafe, raw output.\n',
+        '        -v,--version        : Show version and exit.',
+        '    Notes:',
+        '        You can pipe output from another program.',
+        '        When no \'evalcode\' is given, stdin is used.\n',
+        '        If a filename is passed, the name __main__ is not',
+        '        set. So it may not run as expected.\n',
+        '        It will run each statement in the file, but:',
+        '            if __name__ == \'__main__\' will be False.',
+        '            if __name__ == \'__pyval__\' will be True.\n',
+        '        You can explicitly bypass this, but it may be',
+        '        better to write a specific sandbox-friendly',
+        '        script to test things out.\n'
+    ))
 
     if reason:
         print('\n{}\n'.format(reason))
@@ -540,8 +550,9 @@ def main(args):
         # Filename will be set if evalstr is a valid filename, before executing
         filename = None
     else:
-        print_help('No string to evaluate!', show_options=False)
-        return 1
+        # Read from stdin instead.
+        print('\nReading from stdin, use EOF to run (Ctrl + D).\n')
+        evalstr = sys.stdin.read()
 
     # Get pyval_exec.debug setting from cmdline.
     debug = argd['--debug']
@@ -559,7 +570,16 @@ def main(args):
         print('Loaded contents from file: {}\n'.format(filename))
     else:
         stringmode = True
-        print('Content: {}\n'.format(evalstr))
+        evallines = evalstr.split('\n')
+        evalpreview = evallines[0]
+        evallen = len(evallines)
+        if evallen > 1:
+            morecount = evallen - 1
+            plural = 'line' if morecount == 1 else 'lines'
+            plusmsg = '...plus {} more {}.'.format(morecount, plural)
+            evalpreview = ' '.join((evalpreview, plusmsg))
+
+        print('Content: {}\n'.format(evalpreview))
 
     e = ExecBox(evalstr)
     e.debug = debug
@@ -578,4 +598,4 @@ def main(args):
     return 0
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main(sys.argv))

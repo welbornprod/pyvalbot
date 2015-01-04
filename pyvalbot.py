@@ -169,7 +169,7 @@ class PyValIRCProtocol(irc.IRCClient):
         self.username = self.admin.username
         # The password attributes are deleted as soon as they are used.
         self.nickservpw = self.get_config('password', default=None)
-        #self.password = self.get_config('loginpw', default=None)
+
         self.erroneousNickFallback = '{}_'.format(self.nickname)
         # Settings for client/version replies.
         self.versionName = NAME
@@ -228,7 +228,7 @@ class PyValIRCProtocol(irc.IRCClient):
             return True
 
         # Try erasing an attribute value (without erasing the attribute)
-        if not '.' in attr:
+        if '.' not in attr:
             try:
                 setattr(self, attr, None)
                 return True
@@ -546,7 +546,7 @@ class PyValIRCProtocol(irc.IRCClient):
         # Handle auto-bans for command msgs.
         ban_msg = None
         if (self.admin.last_handle and
-           self.admin.last_nick and self.is_command(message)):
+                self.admin.last_nick and self.is_command(message)):
             # save seconds since last response.
             respondtime = (datetime.now() - self.admin.last_handle)
             respondsecs = respondtime.total_seconds()
@@ -597,7 +597,7 @@ class PyValIRCProtocol(irc.IRCClient):
             # Disallow backup of requests. If handlingcount is too much
             # just ignore this one.
             if ((not is_admin) and
-               (self.admin.handlingcount > self.admin.banwarn_limit)):
+                    (self.admin.handlingcount > self.admin.banwarn_limit)):
                 log.msg('Too busy, ignoring command: {}'.format(message))
                 return None
             # Keep track of how many requests are unanswered (handling).
@@ -719,8 +719,8 @@ class PyValIRCProtocol(irc.IRCClient):
                           target,
                           nick)
 
-    def _showError(self, failure):
-        return failure.getErrorMessage()
+    def _showError(self, failureobj):
+        return failureobj.getErrorMessage()
 
 
 class PyValIRCFactory(protocol.ReconnectingClientFactory):
@@ -932,4 +932,5 @@ if __name__ == '__main__':
     # main() creates the instance.
     factory = None
     # Start irc client.
+    log.msg('Connecting to: {}, port: {}'.format(servername, portnum))
     task.react(main, [serverstr, MAIN_ARGD])

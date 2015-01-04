@@ -8,10 +8,8 @@
 import re
 
 NAME = 'PyVal'
-VERSION = '1.0.7'
-VERSIONX = '4'
-VERSIONSTR = '{} v. {}-{}'.format(NAME, VERSION, VERSIONX)
-
+VERSION = '1.0.7-6'
+VERSIONSTR = '{} v. {}'.format(NAME, VERSION)
 DAYS = {i: v for i, v in enumerate([
         'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])}
 

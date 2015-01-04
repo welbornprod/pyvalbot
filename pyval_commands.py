@@ -436,7 +436,7 @@ class AdminHandler(object):
         """ Send an IDENTIFY msg to NickServ. """
         log.msg('Identifying with nickserv...')
         if not pw:
-            return 'no password supplied.'
+            return 'No password supplied for IDENTIFY.'
 
         self.sendLine('PRIVMSG NickServ :IDENTIFY '
                       '{} {}'.format(self.nickname, pw))
@@ -898,7 +898,7 @@ class CommandFuncs(object):
         channel, text = cmdargs[0], ' '.join(cmdargs[1:])
         if not channel.startswith('#'):
             channel = '#{}'.format(channel)
-        if not channel in self.admin.channels:
+        if channel not in self.admin.channels:
             return 'not in that channel: {}'.format(channel)
 
         self.admin.do_action(channel, text)
@@ -1243,7 +1243,7 @@ class CommandFuncs(object):
         if not self.admin.help_info:
             return 'help isn\'t available right now.'
 
-       # Handle python style help (still only works for pyval cmds)
+        # Handle python style help (still only works for pyval cmds)
         if cmdname and '(' in cmdname:
             # Convert 'help(test)' into 'help test', or 'help()' into 'help '
             cmdname = cmdname.replace('(', ' ')
