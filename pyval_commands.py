@@ -24,7 +24,6 @@ from pyval_exec import ExecBox, TimedOut
 from pyval_util import (
     NAME,
     VERSION,
-    VERSIONX,
     get_args,
     humantime,
     timefromsecs)
@@ -1210,7 +1209,7 @@ class CommandFuncs(object):
     @simple_command
     def cmd_version(self):
         """ Return pyval version, and sys.version. """
-        pyvalver = '{}: {}-{}'.format(NAME, VERSION, VERSIONX)
+        pyvalver = '{}: {}'.format(NAME, VERSION)
         pyver = 'Python: {}'.format(sysversion.split()[0])
         gccver = 'GCC: {}'.format(sysversion.split('\n')[-1])
         verstr = '{}, {}, {}'.format(pyvalver, pyver, gccver)
