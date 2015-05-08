@@ -3,7 +3,7 @@
 
 """ pyval_exec.py
     A safer exec/eval container for pyval bot or anything else that
-    might require.
+    might require it.
     Supports a limited subset of python, mostly hiding the nasty parts
     that aren't really needed for basic teaching purposes anyway.
 
@@ -36,7 +36,7 @@ import os
 import subprocess
 import sys
 
-from pyval_util import __file__ as PYVAL_FILE
+from pyval_util import __file__ as PYVAL_FILE  # noqa
 from pyval_util import VERSION
 
 NAME = 'PyValExec'
@@ -59,11 +59,11 @@ PATH = os.environ.get('PATH').split(':')
 if not PATH:
     print_debug('No $PATH variable set!')
     PATH = (
-        '/usr/bin',
-        '/usr/local/bin',
         os.path.expanduser('~/bin'),
         os.path.expanduser('~/.local/bin'),
-        os.path.expanduser('~/local/bin')
+        os.path.expanduser('~/local/bin'),
+        '/usr/bin',
+        '/usr/local/bin'
     )
 for dirname in PATH:
     pypypath = os.path.join(dirname, 'pypy-sandbox')
