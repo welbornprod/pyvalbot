@@ -36,6 +36,10 @@
         "args": null,
         "desc": "List all currently banned nicks."
         },
+    "banwarns": {
+        "args": null,
+        "desc": "Show ban warnings count."
+        },
     "blacklist": {
         "args": "[on, off, ?]",
         "desc": "Change pyvalexec's blacklist option, or  show the current value."
