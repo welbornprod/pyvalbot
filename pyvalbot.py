@@ -75,6 +75,7 @@ import sys
 # Arg parsing
 from docopt import docopt
 # Config file
+# TODO: Switch to local json_settings module.
 from easysettings import EasySettings
 
 # Irc stuff
