@@ -36,7 +36,7 @@ The info in this README and the project page may not always be in sync.
 
 By default the bot connects to `irc.freenode.net`.
 
-The bot joins `#<bot nick>` on succesful connection. (channels can be set with `--channels` also,
+The bot joins `##<bot nick>` on succesful connection. (channels can be set with `--channels` also,
 see <a href='#example-bot-usage'>Example Bot Usage</a>.)
 
 Nickname is set to *pyval* by default, which is registered to me so you will want to change it.
