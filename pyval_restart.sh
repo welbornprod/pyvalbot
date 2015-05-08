@@ -20,8 +20,7 @@ fi
 
 # Do a clean kill, where Twisted will cleanly disconnect. (send interrupt)
 echo "Killing pyvalbot process: ${PYVALPID}"
-kill -SIGINT $PYVALPID
-if [ "$?" == "0" ]; then
+if kill -SIGINT "$PYVALPID"; then
     # Successful kill, restart it.
     echo "Restarting with args: ${@}"
     ./pyvalbot.py $@
