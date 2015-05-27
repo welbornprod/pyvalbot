@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """ pyval_sandbox.py
-    Compile source sent in with stdin, returns output on stdout.
-    This script alone is not safe. It is designed to be ran through 
+    Compiles source sent in with stdin, returns output on stdout.
+    This script alone is not safe. It is designed to be ran through
     pypy-sandbox with input validated beforehand to block other areas of
     danger.
 

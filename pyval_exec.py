@@ -31,10 +31,13 @@
 """
 from __future__ import print_function
 from tempfile import SpooledTemporaryFile
+import inspect
 import multiprocessing
 import os
 import subprocess
 import sys
+
+from docopt import docopt
 
 from pyval_util import __file__ as PYVAL_FILE  # noqa
 from pyval_util import VERSION
@@ -42,36 +45,109 @@ from pyval_util import VERSION
 NAME = 'PyValExec'
 SCRIPTNAME = os.path.split(sys.argv[0])[-1]
 
+USAGESTR = """{name} v. {version}
+
+    Usage:
+        {script} -h | -p | -v
+        {script} [-b] [-d] [-q] [-r] [-t secs] [CODE]
+
+    Options:
+        CODE                    : Code to evaluate/execute,
+                                  or a file to read code from.
+                                  stdin is used when not given.
+        -b,--blacklist          : Use blacklist (testing).
+        -d,--debug              : Prints extra info before,
+                                  during, and after execution.
+        -h,--help               : Show this message.
+        -p,--printblacklist     : Print blacklisted strings only.
+        -q,--quiet              : Print output only.
+        -r,--raw                : Show unsafe, raw output.
+        -t secs,--timeout secs  : Timeout for code execution in
+                                  seconds. Default: 5
+        -v,--version            : Show version and exit.
+
+    Notes:
+        You can pipe output from another program.
+        When no 'evalcode' is given, stdin is used.
+        If a filename is passed, the name __main__ is not
+        set. So it may not run as expected.
+        It will run each statement in the file, but:
+            if __name__ == '__main__' will be False.
+            if __name__ == '__pyval__' will be True.
+        You can explicitly bypass this, but it may be
+        better to write a specific sandbox-friendly
+        script to test things out.
+""".format(name=NAME, version=VERSION, script=SCRIPTNAME)
+
 # Allow debug early.
 
 
-def print_debug(*args, **kwargs):
+def _debug(*args, **kwargs):
+    """ Print a message only if DEBUG is truthy. """
+    if not (DEBUG and args):
+        return None
+    # Include parent class name when given.
+    parent = kwargs.get('parent', None)
+    try:
+        kwargs.pop('parent')
+    except KeyError:
+        pass
+    # Go back more than once when given.
+    backlevel = kwargs.get('back', 1)
+    try:
+        kwargs.pop('back')
+    except KeyError:
+        pass
+
+    frame = inspect.currentframe()
+    # Go back a number of frames (usually 1).
+    while backlevel > 0:
+        frame = frame.f_back
+        backlevel -= 1
+    fname = os.path.split(frame.f_code.co_filename)[-1]
+    lineno = frame.f_lineno
+    if parent:
+        func = '{}.{}'.format(parent.__class__.__name__, frame.f_code.co_name)
+    else:
+        func = frame.f_code.co_name
+
+    # Patch args to stay compatible with print().
+    pargs = list(args)
+    lineinfo = '{}:{} {}(): '.format(fname, lineno, func).ljust(40)
+    pargs[0] = ''.join((lineinfo, pargs[0]))
+    print(*pargs, **kwargs)
+
+
+def debug(*args, **kwargs):
+    """ This function is a dummy. It is overwritten when --debug is used. """
     return None
+
 DEBUG = False
 
 if __name__ == '__main__':
     # This -d conflicts with pyvalbot. Only use it when executed directly.
     DEBUG = ('-d' in sys.argv) or ('--debug' in sys.argv)
     if DEBUG:
-        print_debug = print  # noqa
-
+        debug = _debug  # noqa
 
 # Location for pypy-sandbox.
 PYPYSANDBOX_EXE = None
-PATH = os.environ.get('PATH').split(':')
+PATH = set((s.strip() for s in os.environ.get('PATH', '').split(':') if s))
 if not PATH:
-    print_debug('No $PATH variable set!')
-    PATH = (
+    debug('No $PATH variable set!\n..only defaults will be used.')
+
+for knownpath in (
         os.path.expanduser('~/bin'),
         os.path.expanduser('~/.local/bin'),
         os.path.expanduser('~/local/bin'),
         '/usr/bin',
-        '/usr/local/bin'
-    )
+        '/usr/local/bin'):
+    PATH.add(knownpath)
+
 for dirname in PATH:
     pypypath = os.path.join(dirname, 'pypy-sandbox')
     if os.path.exists(pypypath):
-        print_debug('Found pypy-sandbox: {}'.format(pypypath))
+        debug('Found pypy-sandbox: {}'.format(pypypath))
         PYPYSANDBOX_EXE = pypypath
         break
 else:
@@ -110,26 +186,12 @@ class ExecBox(object):
     def __repr__(self):
         return self.output
 
-    def _dir(self, *args):
-        """ Fake attributes for dir() NO LONGER USED """
-        return [aname for aname in self._globals().keys()]
-
-    def _globals(self, *args, **kwargs):
-        """ Fake globals() NO LONGER USED """
-        def fake_meth(*args, **kwargs):
-            return None
-        return {'fake_attribute': 1,
-                'fake_method': fake_meth,
-                'fake_object': object(),
-                }
-
-    def _locals(self, *args, **kwargs):
-        """ Fake locals()... NO LONGER USED """
-        return self._globals()
-
     def blacklist(self):
         """ Return a dict of black-listed strings.
             Format is: {string: message}
+
+            PyPy Sandbox already does a good job, so this is unnecessary.
+            It's left over from early versions, which were not as strong.
         """
         badstrings = {
             '__bases__': 'too complicated for this bot.',
@@ -163,20 +225,19 @@ class ExecBox(object):
 
     def check_nesting(self, inputstr):
         """ Checks a single line for ( max. """
-        bad_nesting = lambda s: s.count('(') > self.nestedmax
         for line in inputstr.split('\n'):
-            if bad_nesting(line):
+            if line.count('(') > self.nestedmax:
                 return True
         return False
 
-    def _exec(self, pipesend=None, stringmode=True):
+    def _exec(self, pipesend=None, stringmode=True, timeout=None):
         """ Execute actual code using pypy-sandbox/pyval_sandbox combo.
             This method does not blacklist anything.
             It runs whatever self.inputstr is set to.
 
             Arguments:
                 pipesend    :  multiprocessing pipe to send output to.
-                stringmode  :  fixes newlines so that can be used from
+                stringmode  :  fixes newlines so that they can be used from
                                cmdline/irc-chat.
                                default: True
         """
@@ -192,7 +253,7 @@ class ExecBox(object):
         targetfile = '/tmp/pyval_sandbox.py'
         # Setup command args for Popen.
         cmdargs = [PYPYSANDBOX_EXE,
-                   '--timeout={}'.format(self.timeout),
+                   '--timeout={}'.format(timeout or self.timeout),
                    '--tmp={}'.format(sandboxdir),
                    targetfile]
 
@@ -213,27 +274,45 @@ class ExecBox(object):
         return output
 
     def error_return(self, s):
-        """ Set output as error str and return it. """
+        """ Set output as error str and return it.
+            self.lasterror and self.output will be set to the same thing.
+        """
         self.output = self.lasterror = str(s)
         return self.output
 
     def execute(self, **kwargs):
         """ Execute code inside the pypy sandbox/pyval_sandbox.
+
+            This is the preferred method of code execution, as it has a
+            timeout and allows "safe" output through configuration
+            (self.maxlines and self.maxlength).
+
             Keyword Arguments:
-                evalstr        : String to evaluate. (or file contents)
+                evalstr        : String to evaluate.
+                maxlength      : Maximum length in characters for output.
+                                 Default: self.maxlength (0, not used)
+                maxlines       : Maximum number of lines for output.
+                                 Default: self.maxlines (0, not used)
                 raw_output     : Use raw output instead of safe_output().
                                  Default: False
                 stringmode     : Fix newlines so they can be used with
                                  cmdline/irc-chat.
                                  Default: True
+                timeout        : Timeout for code execution in seconds.
+                                 Default: self.timeout (5)
                 use_blacklist  : Enable the blacklist (forbidden strings).
                                  Default: False
         """
 
         evalstr = kwargs.get('evalstr', None)
+        maxlength = kwargs.get('maxlength', self.maxlength) or 0
+        maxlines = kwargs.get('maxlines', self.maxlines) or 0
         raw_output = kwargs.get('raw_output', False)
-        use_blacklist = kwargs.get('use_blacklist', False)
         stringmode = kwargs.get('stringmode', True)
+        timeout = kwargs.get('timeout', self.timeout)
+        if timeout is None:
+            timeout = 0
+        use_blacklist = kwargs.get('use_blacklist', False)
 
         # Reset last error.
         self.lasterror = None
@@ -245,6 +324,8 @@ class ExecBox(object):
         if self.inputstr:
             # Trim input to catch bad strings.
             self.inputtrim = self.inputstr.replace(' ', '').replace('\t', '')
+            if not self.inputtrim.strip():
+                return self.error_return('only whitespace found.')
         else:
             # No input, no execute().
             return self.error_return('no input.')
@@ -256,24 +337,29 @@ class ExecBox(object):
                 return self.error_return(badinputmsg)
 
         # Build kwargs for _exec.
-        execargs = {'stringmode': stringmode}
+        # 'timeout' for pypy-sandbox is not being honored, but is included for
+        # debug messages
+        execargs = {'stringmode': stringmode, 'timeout': timeout}
 
         # Actually execute it with fingers crossed.
         try:
-            result = self.timed_call(self._exec,
-                                     kwargs=execargs,
-                                     timeout=self.timeout)
+            result = self.timed_call(
+                self._exec,
+                kwargs=execargs,
+                timeout=timeout)
             self.output = str(result)
         except TimedOut:
-            self.output = 'Error: Operation timed out.'
+            return self.error_return('Error: Operation timed out.')
         except Exception as ex:
-            self.output = 'Error: {}'.format(ex)
+            # This is a PyVal error, not the evaluated code's.
+            # Any errors in the user code will be returned normally.
+            return self.error_return('PyVal Error: {}'.format(ex))
 
         # Return the safe output version of self.output unless forced.
         if raw_output:
             return self.output
-        else:
-            return self.safe_output()
+
+        return self.safe_output(maxlines=maxlines, maxlength=maxlength)
 
     @staticmethod
     def parse_input(s, stringmode=True):
@@ -425,10 +511,11 @@ class ExecBox(object):
         kwargs = kwargs or {}
         piperecv, pipesend = multiprocessing.Pipe()
         kwargs.update({'pipesend': pipesend})
-        execproc = multiprocessing.Process(target=func,
-                                           name='ExecutionProc',
-                                           args=args,
-                                           kwargs=kwargs)
+        execproc = multiprocessing.Process(
+            target=func,
+            name='ExecutionProc',
+            args=args,
+            kwargs=kwargs)
         execproc.start()
         execproc.join(timeout=timeout)
         if execproc.is_alive():
@@ -465,37 +552,6 @@ class TimedOut(Exception):
     pass
 
 
-def parse_args(args, argset):
-    """ Returns a dict of arg flags and True/False if they are there.
-        Returns a 'cleaned' version of args also.
-        Example:
-            args, argdict = parse_args(sys.argv[1:], (('-o', '--option')))
-            # When sys.argv == '-o test -a'
-            # Returns:
-            # args == 'test -a' (-a was not sent to parse_args)
-            # argdict == {'--option': True} (-o was sent to parse_args)
-
-    """
-
-    # Set default False values
-    argdict = {o[1]: False for o in argset}
-    args = args[1:]
-    if not args:
-        # No args, everything will be set to False.
-        return [], argdict
-    trimmedargs = args[:]
-    # Set True for found args.
-    for shortopt, longopt in argset:
-        if (shortopt in args) or (longopt in args):
-            argdict[longopt] = True
-            while shortopt in trimmedargs:
-                trimmedargs.remove(shortopt)
-            while longopt in trimmedargs:
-                trimmedargs.remove(longopt)
-
-    return trimmedargs, argdict
-
-
 def print_blacklist():
     """ Prints the current black list for ExecBox """
 
@@ -503,49 +559,6 @@ def print_blacklist():
     print('Blacklisted items: ({})'.format(len(badstrings)))
     for badstring, msg in badstrings.items():
         print('    {} : {}'.format(badstring.rjust(25), msg))
-
-
-def print_help(reason=None, show_options=True):
-    """ Prints a little help message for cmdline options. """
-
-    usage_str = '\n'.join((
-        '{name} v. {ver}\n'
-        '    Usage:'
-        '        {script} -h | -p | -v'
-        '        {script} [-b] [-d] [-q] [-r] [evalcode]\n'
-    )).format(name=NAME, ver=VERSION, script=SCRIPTNAME)
-
-    optionstr = '\n'.join((
-        '    Options:',
-        '        evalcode            : Code to evaluate/execute,',
-        '                              or a file to read code from.',
-        '                              stdin is used when not given.',
-        '        -b,--blacklist      : Use blacklist (testing).',
-        '        -d,--debug          : Prints extra info before,',
-        '                              during, and after execution.',
-        '        -h,--help           : Show this message.',
-        '        -p,--printblacklist : Print blacklisted strings and exit.',
-        '        -q,--quiet          : Print output only.',
-        '        -r,--raw            : Show unsafe, raw output.',
-        '        -v,--version        : Show version and exit.\n',
-        '    Notes:',
-        '        You can pipe output from another program.',
-        '        When no \'evalcode\' is given, stdin is used.\n',
-        '        If a filename is passed, the name __main__ is not',
-        '        set. So it may not run as expected.\n',
-        '        It will run each statement in the file, but:',
-        '            if __name__ == \'__main__\' will be False.',
-        '            if __name__ == \'__pyval__\' will be True.\n',
-        '        You can explicitly bypass this, but it may be',
-        '        better to write a specific sandbox-friendly',
-        '        script to test things out.\n'
-    ))
-
-    if reason:
-        print('\n{}\n'.format(reason))
-    print(usage_str)
-    if show_options:
-        print(optionstr)
 
 
 def print_status(*args, **kwargs):
@@ -564,28 +577,9 @@ def remove_items(lst, items):
 def main(args):
     """ Main entry point, expects args from sys. """
     # Parse args to return an arg dict like docopt.
-    args, argd = parse_args(
-        args, (
-            ('-b', '--blacklist'),
-            ('-h', '--help'),
-            ('-d', '--debug'),
-            ('-p', '--printblacklist'),
-            ('-r', '--raw'),
-            ('-q', '--quiet'),
-            ('-v', '--version'),
-        )
-    )
-    if argd['--help']:
-        # Catch help arg.
-        print_help()
-        return 0
+    argd = docopt(USAGESTR, version=VERSION)
 
-    elif argd['--version']:
-        # Catch version arg.
-        print('{} v. {}'.format(NAME, VERSION))
-        return 0
-
-    elif argd['--printblacklist']:
+    if argd['--printblacklist']:
         # Catch blacklist printer.
         print_blacklist()
         return 0
@@ -595,12 +589,18 @@ def main(args):
         global print_status
         print_status = lambda s: None
 
-    if args:
-        # Set eval string.
-        evalstr = ' '.join(args)
+    try:
+        timeout = int(argd['--timeout'] or 5)
+    except (TypeError, ValueError):
+        print('\nInvalid number for --timeout: {}'.format(argd['--timeout']))
+        return 1
+
+    if argd['CODE']:
+        evalstr = argd['CODE']
     else:
         # Read from stdin instead.
-        print_status('\nReading from stdin, use EOF to run (Ctrl + D).\n')
+        if sys.stdin.isatty():
+            print_status('\nReading from stdin, use EOF to run (Ctrl + D).\n')
         evalstr = sys.stdin.read()
 
     if (len(evalstr) < 256) and os.path.isfile(evalstr):
@@ -629,10 +629,13 @@ def main(args):
 
     e = ExecBox(evalstr)
     e.debug = DEBUG
+
     try:
-        output = e.execute(raw_output=argd['--raw'],
-                           stringmode=stringmode,
-                           use_blacklist=argd['--blacklist'])
+        output = e.execute(
+            raw_output=argd['--raw'],
+            stringmode=stringmode,
+            use_blacklist=argd['--blacklist'],
+            timeout=timeout)
     except TimedOut:
         print('\nOperation timed out. ({}s)'.format(e.timeout))
     except Exception as ex:
