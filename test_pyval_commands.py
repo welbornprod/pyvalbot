@@ -12,9 +12,10 @@ ADMINHELP = None
 
 class NoCommand(object):
 
-    """ Helper for get_usercmd_result, where returning None could mean
-        several different things. Instead of returning None when no
-        handler function is found, return NoCommand('your message')
+    """ Helper for get_usercmd_result, where returning None as a result from
+        user/admin commands could mean several different things.
+        Instead of returning None when no handler function is found,
+        return NoCommand('your message')
         so the caller can recognize the difference.
     """
 
@@ -58,17 +59,14 @@ class TestCommandFuncs(unittest.TestCase):
             self.fail('No cmdhandler set in get_usercmd_result!')
 
         cmdfunc = self.get_cmdfunc(cmdhandler, userinput, asadmin=asadmin)
-        if cmdfunc:
-            cmd, sep, args = userinput.partition(' ')
-            usernick = 'testadmin' if asadmin else 'testuser'
+        if isinstance(cmdfunc, NoCommand):
+            # No command was found for this input.
+            return cmdfunc
 
-            return cmdfunc(args, nick=usernick)
-        else:
-            return NoCommand(userinput)
+        cmd, sep, args = userinput.partition(' ')
+        usernick = 'testadmin' if asadmin else 'testuser'
 
-    def is_nocommand(self, o):
-        """ Test whether an object is actually a NoCommand(). """
-        return isinstance(o, NoCommand)
+        return cmdfunc(args, nick=usernick)
 
     def setUp(self):
         """ Setup each test with an admin/command handler """
@@ -90,7 +88,7 @@ class TestCommandFuncs(unittest.TestCase):
         cmdresult = self.get_usercmd_result(self.cmdhandler,
                                             '!getattr admin.blacklist',
                                             asadmin=True)
-        if self.is_nocommand(cmdresult):
+        if isinstance(cmdresult, NoCommand):
             self.fail_nocmd(cmdresult)
 
         self.assertEqual(cmdresult, 'admin.blacklist = True',
@@ -103,17 +101,19 @@ class TestCommandFuncs(unittest.TestCase):
         cmd = '!setattr'
         args = 'admin.blacklist True'
         userinput = '{} {}'.format(cmd, args)
-        setattrfunc = self.get_cmdfunc(self.cmdhandler,
-                                       userinput,
-                                       asadmin=True)
-        if self.is_nocommand(setattrfunc):
+        setattrfunc = self.get_cmdfunc(
+            self.cmdhandler,
+            userinput,
+            asadmin=True)
+
+        if isinstance(setattrfunc, NoCommand):
             self.fail_nocmd(setattrfunc)
 
-        self.assertEqual(self.cmdhandler.admin.blacklist, False,
-                         msg='Failed to setup attribute correctly')
         setattrfunc(args, nick='testadmin')
-        self.assertEqual(self.cmdhandler.admin.blacklist, True,
-                         msg='Failed to set attribute')
+        self.assertEqual(
+            self.cmdhandler.admin.blacklist,
+            True,
+            msg='Failed to set attribute')
 
     def test_print_topastebin(self):
         """ test print_topastebin() """
@@ -124,12 +124,12 @@ class TestCommandFuncs(unittest.TestCase):
         self.assertIsNone(noneresult, msg='empty arg should produce None')
 
         pastebinurl = pastebin('<pyvaltest> query', '<pyvaltest> valid string')
-        self.assertIsNotNone(pastebinurl,
-                             msg=('print_topastebin() failed to give url: '
-                                  '\'{}\''.format(pastebinurl)))
-        # Make sure it is an actual url.
-        self.assertIsNotNone(pastebinurl,
-                             msg='valid string should produce a paste bin url')
+        self.assertIsNotNone(
+            pastebinurl,
+            msg=('print_topastebin() failed to give url: \'{}\''.format(
+                pastebinurl)
+            )
+        )
         print('test_print_topastebin - Url: {}'.format(pastebinurl))
 
 if __name__ == '__main__':
