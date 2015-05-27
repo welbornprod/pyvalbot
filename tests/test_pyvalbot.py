@@ -121,20 +121,22 @@ class TestImports(unittest.TestCase):
             # Twisted-core installed?
             import twisted
         except ImportError as ex:
-            errmsg = '\n'.join([
-                'twisted >= {} is not installed!'.format(ver),
-                '\nError msg: {}'.format(ex)])
-            self.fail('twisted is not installed!\n{}'.format(ex))
+            errmsg = '\n'.join((
+                'twisted >= {version} is not installed!',
+                '\nError msg: {message}'
+            )).format(version=ver, message=ex)
+            self.fail(errmsg)
 
         try:
             from twisted.python import failure, log  # noqa
         except ImportError as ex:
-            errmsg = '\n'.join([
-                'twisted.python >= {} is not installed!'.format(ver),
+            errmsg = '\n'.join((
+                'twisted.python >= {version} is not installed!',
                 'looking for:',
                 '    twisted.python.failure'
                 '    twisted.python.log',
-                '\nError msg: {}'.format(ex)])
+                '\nError msg: {message}'
+            )).format(version=ver, message=ex)
             self.fail(errmsg)
 
         try:
@@ -146,33 +148,35 @@ class TestImports(unittest.TestCase):
                 reactor,
                 task)
         except ImportError as ex:
-            errmsg = '\n'.join([
-                'twisted.internet >= {} is not installed!'.format(ver),
+            errmsg = '\n'.join((
+                'twisted.internet >= {version} is not installed!',
                 'looking for:',
                 '    twisted.internet.defer',
                 '    twisted.internet.endpoints',
                 '    twisted.internet.protocol',
                 '    twisted.internet.reactor',
                 '    twisted.internet.task',
-                '\nError msg: {}'.format(ex)])
+                '\nError msg: {message}'
+            )).format(version=ver, message=ex)
             self.fail(errmsg)
 
         try:
             # Irc stuff.
             from twisted.words.protocols import irc  # noqa
         except ImportError as ex:
-            errmsg = '\n'.join([
-                'twisted.words.protocols >= {} is not installed!'.format(ver),
+            errmsg = '\n'.join((
+                'twisted.words.protocols >= {version} is not installed!',
                 'looking for:',
                 '    twisted.words.protocols.irc',
-                '\nError msg: {}'.format(ex)])
+                '\nError msg: {message}'
+            )).format(version=ver, message=ex)
             self.fail(errmsg)
 
         # All required modules are installed, check twisted version.
         curver = twisted.__version__
         reqver = VERSIONS['twisted']
         if check_versions(curver, reqver) < 0:
-            subpkgs = [
+            subpkgs = (
                 'internet.defer',
                 'internet.endpoints',
                 'internet.protocol',
@@ -181,7 +185,7 @@ class TestImports(unittest.TestCase):
                 'python.log',
                 'python.failure',
                 'words.protocols.irc',
-            ]
+            )
             errmsg = import_failmsg('twisted',
                                     subpkgs=subpkgs,
                                     curver=curver)
