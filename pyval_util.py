@@ -10,54 +10,26 @@ import re
 NAME = 'PyVal'
 VERSION = '1.1.0'
 VERSIONSTR = '{} v. {}'.format(NAME, VERSION)
-DAYS = {i: v for i, v in enumerate([
-        'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])}
-
-DAYS_SHORT = {i: v for i, v in enumerate(['Mon', 'Tue', 'Wed', 'Thur', 'Fri'])}
-
-MONTHS = {i + 1: v for i, v in enumerate([
-    'January', 'February', 'March', 'April',
-    'May', 'June', 'July', 'August',
-    'Septemer', 'October', 'November', 'December'])}
-MONTHS_SHORT = {i + 1: v for i, v in enumerate([
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Nov', 'Dec'])}
 
 
 def humantime(d, short=False):
     """ Parse a datetime.datetime() into a human readable string.
         Ex: d = datetime(2014, 2, 5, 13, 5, 6)
             print(humantime(d))
-            # prints: Wednesday, February 5 1:5:6pm
+            # prints: Wednesday, February 5 01:05:06pm
 
         If no time is included in the datetime() (time zeroed out),
         only the date string is returned.
+
+        strftime() would probably be better.
 
         Arguments:
             d      :  A datetime() object with or without time included.
             short  : Use abbreviations if True, otherwise use proper names.
                      Default: False
     """
-    if short:
-        monthstr = '{}.'.format(MONTHS_SHORT[d.month])
-        daystr = '{}.'.format(DAYS_SHORT[d.weekday()])
-    else:
-        monthstr = MONTHS[d.month]
-        daystr = DAYS[d.weekday()]
-    datestr = '{}, {} {} {}'.format(daystr,
-                                    monthstr,
-                                    d.day,
-                                    d.year)
-
-    # Return only the date if no time is set.
-    if not any([d.hour, d.minute, d.second]):
-        return datestr
-    # Parse human readable time. (12-Hour am/pm)
-    shift = 'am' if d.hour < 13 else 'pm'
-    hourstr = str(d.hour) if d.hour < 13 else str(d.hour - 12)
-    timestr = ':'.join([hourstr, str(d.minute), str(d.second)])
-    timestr = '{}{}'.format(timestr, shift)
-    return ' '.join([datestr, timestr])
+    return d.strftime(
+        '%a, %b %d %Y %I:%M:%S%p' if short else '%A, %B %d %Y %I:%M:%S%p')
 
 
 def timefromsecs(secs, label=True):
