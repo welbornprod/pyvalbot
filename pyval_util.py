@@ -21,15 +21,21 @@ def humantime(d, short=False):
         If no time is included in the datetime() (time zeroed out),
         only the date string is returned.
 
-        strftime() would probably be better.
-
         Arguments:
             d      :  A datetime() object with or without time included.
             short  : Use abbreviations if True, otherwise use proper names.
                      Default: False
     """
-    return d.strftime(
-        '%a, %b %d %Y %I:%M:%S%p' if short else '%A, %B %d %Y %I:%M:%S%p')
+    if d.strftime('%m%d%y') == '010100':
+        time = ''
+    else:
+        time = d.strftime('%a, %b %d %Y' if short else '%A, %B %d %Y')
+    if d.strftime('%I%M%S') == '120000':
+        date = ''
+    else:
+        date = d.strftime('%I:%M:%S%p')
+    # This comprehension prevents a leading space in time-only mode.
+    return ' '.join((s for s in (date, time) if s))
 
 
 def timefromsecs(secs, label=True):
