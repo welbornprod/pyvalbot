@@ -8,18 +8,23 @@
 import re
 
 NAME = 'PyVal'
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 VERSIONSTR = '{} v. {}'.format(NAME, VERSION)
 
 
 def humantime(d, short=False):
-    """ Parse a datetime.datetime() into a human readable string.
-        Ex: d = datetime(2014, 2, 5, 13, 5, 6)
-            print(humantime(d))
-            # prints: Wednesday, February 5 01:05:06pm
+    """ Formats a datetime.datetime() into a human readable string.
 
-        If no time is included in the datetime() (time zeroed out),
-        only the date string is returned.
+        Date, Time, and DateTime objects are accepted.
+        If a time or date portion is zeroed out, it is not printed.
+
+        Example:
+            humantime(datetime.time(datetime.now()))
+            # '09:26:18PM'
+            humantime(datetime.date(datetime.now()))
+            # 'Wednesday, May 27 2015'
+            humantime(datetime.now())
+            # 'Wednesday, May 27 2015 09:26:31PM'
 
         Arguments:
             d      :  A datetime() object with or without time included.
@@ -27,14 +32,14 @@ def humantime(d, short=False):
                      Default: False
     """
     if d.strftime('%m%d%y') == '010100':
-        time = ''
-    else:
-        time = d.strftime('%a, %b %d %Y' if short else '%A, %B %d %Y')
-    if d.strftime('%I%M%S') == '120000':
         date = ''
     else:
-        date = d.strftime('%I:%M:%S%p')
-    # This comprehension prevents a leading space in time-only mode.
+        date = d.strftime('%a, %b %d %Y' if short else '%A, %B %d %Y')
+    if d.strftime('%H%M%S') == '000000':
+        time = ''
+    else:
+        time = d.strftime('%I:%M:%S%p')
+    # This prevents a leading/trailing space in date/time-only mode.
     return ' '.join((s for s in (date, time) if s))
 
 

@@ -44,38 +44,6 @@ parse_false = lambda s: s.lower() in false_values
 parse_bool = lambda s: parse_true(s[1:-1]) if boolpat.match(s) else None
 
 
-def simple_command(func):
-    """ Simple decorator for simple commands.
-        Used for commands that have no use for args.
-        Example:
-            @simple_command
-            def cmd_hello(self):
-                return 'hello'
-            # Calling cmd_hello('blah')
-            # is like calling cmd_hello()
-    """
-
-    def inner(self, *args, **kwargs):
-        return func(self)
-    return inner
-
-
-def basic_command(func):
-    """ Simple decorator for basic commands that accept a 'rest' arg.
-        Used for commands that have no use for the 'nick' arg.
-        Example:
-            @basic_command
-            def cmd_hello(self, rest):
-                return 'hello'
-            # Calling cmd_hello('hey', nick='blah'),
-            # is like calling cmd_hello('hey')
-    """
-
-    def inner(self, *args, **kwargs):
-        return func(self, *args)
-    return inner
-
-
 def block_dict_val(data, blockedlst, value=None):
     """ Block certain dict/config values from being seen.
         Replaces a keys value if any strings in blockedlst are found.
@@ -211,8 +179,16 @@ class AdminHandler(object):
         self.starttime = datetime.now()
         # Current channels the bot is in.
         self.channels = []
-        # This command char is overwritten by PyValIRCClient.
-        self.cmdchar = '!'
+
+        # These are all set by PyValIRCProtocol after config is loaded.
+        self.argd = {}
+        self.cmdchar = '*'
+        self.config = {}
+        self.nickname = None
+        self.topicfmt = ''
+        self.topicmsg = ''
+        self.noheartbeatlog = False
+
         # Whether or not to use PyVal.ExecBoxs blacklist.
         self.blacklist = False
         # Monitoring options. (privmsgs, all recvline, include ips)
@@ -262,7 +238,7 @@ class AdminHandler(object):
         if nick in self.admins:
             return 'already an admin: {}'.format(nick)
 
-        self.admins.append(nick)
+        self.admins.add(nick)
         if self.admins_save():
             return 'added admin: {}'.format(nick)
         else:
@@ -275,17 +251,17 @@ class AdminHandler(object):
     def admins_load(self):
         """ Load admins from list. """
 
+        # admin is cj until the admins file says otherwise.
+        admins = {'cjwelborn'}
+
         if not os.path.exists(ADMINFILE):
             log.msg('No admins list, defaults will be used.')
-            # cj is the default admin.
-            return ['cjwelborn']
+            return admins
 
-        # admin is cj until the admins file says otherwise.
-        admins = ['cjwelborn']
         try:
-            with open('pyval_admins.lst') as fread:
-                admins = [l.strip('\n') for l in fread.readlines()]
-        except (IOError, OSError) as ex:
+            with open(ADMINFILE) as fread:
+                admins = set(l.strip() for l in fread.readlines())
+        except EnvironmentError as ex:
             log.msg('Unable to load admins list:\n{}'.format(ex))
             pass
 
@@ -296,19 +272,19 @@ class AdminHandler(object):
         if nick in self.admins:
             self.admins.remove(nick)
             if self.admins_save():
-                return 'removed admin: {}'.format(nick)
+                msg = 'removed admin: {nick}'
             else:
-                return ('unable to save admins, '
-                        '{} will persist on restart'.format(nick))
-        else:
-            return 'not an admin: {}'.format(nick)
+                msg = 'unable to save admins, {nick} will persist on restart'
+            return msg.format(nick=nick)
+
+        return 'not an admin: {}'.format(nick)
 
     def admins_save(self):
         """ Save current admins list. """
         try:
-            with open(ADMINFILE, 'w') as fwrite:
-                fwrite.write('\n'.join(self.admins))
-                fwrite.write('\n')
+            with open(ADMINFILE, 'w') as f:
+                f.write('\n'.join(sorted(self.admins)))
+                f.write('\n')
                 return True
         except (IOError, OSError) as ex:
             log.msg('Error saving admin list:\n{}'.format(ex))
@@ -407,8 +383,8 @@ class AdminHandler(object):
     def ban_save(self):
         """ Load perma-banned list. """
         try:
-            with open(BANFILE, 'w') as fwrite:
-                fwrite.write('\n'.join(self.banned))
+            with open(BANFILE, 'w') as f:
+                f.write('\n'.join(self.banned))
                 return True
         except (IOError, OSError) as exos:
             log.msg('Unable to save banned file: {}\n{}'.format(BANFILE, exos))
@@ -445,6 +421,21 @@ class AdminHandler(object):
         """ Load help from json file. """
 
         return load_json_object(HELPFILE)
+
+    def op_request(self, channel=None, nick=None, reverse=False):
+        """ op or deop a user through ChanServ.
+            Arguments:
+                channel  : Default channel is '##<self.nickname>'.
+                nick     : Default user is the bot itself.
+                reverse  : Use DEOP instead of OP.
+
+        """
+        chanservcmd = (
+            'deop' if reverse else 'op',
+            channel or '##{}'.format(self.nickname),
+            nick or self.nickname
+        )
+        self.sendmsg('ChanServ', ' '.join(chanservcmd))
 
     def save_config(self):
         """ Save config settings to disk.
@@ -506,6 +497,14 @@ class AdminHandler(object):
             self.sendLine('PRIVMSG {} :{}'.format(target, msgtext))
             self.last_nick = target
             self.last_msg = msgtext
+
+    def set_topic(self, topic=None, channel=None):
+        """ Try to set the bot's channel topic.
+            If no topic is given, self.topicmsg is used.
+        """
+        self.sendLine('TOPIC {chan} :{msg}'.format(
+            chan=channel or '##{}'.format(self.nickname),
+            msg=topic or self.topicmsg))
 
 
 class CommandHandler(object):
@@ -617,51 +616,46 @@ class CommandFuncs(object):
         self.task = kwargs.get('task_', None)
 
     # Commands (must begin with cmd)
-    @basic_command
-    def admin_adminadd(self, rest):
+    def admin_adminadd(self, rest, nick=None):
         """ Add an admin to the list. """
         return self.admin.admins_add(rest)
 
     def admin_adminhelp(self, rest, nick=None):
         """ Build list of admin commands. """
-        return self.get_help(role='admin', cmdname=rest, usernick=None)
+        self.admin.sendmsg(
+            nick,
+            self.get_help(role='admin', cmdname=rest, usernick=None))
 
-    @simple_command
-    def admin_adminlist(self):
+    def admin_adminlist(self, rest, nick=None):
         """ List current admins. """
         return self.admin.admins_list()
 
-    @basic_command
-    def admin_adminmsg(self, rest):
+    def admin_adminmsg(self, rest, nick=None):
         """ Send a message to all pyvalbot admins. """
-        if not rest.strip():
+        if not rest:
             return 'Must give a message to send!'
 
         self.admin.sendmsg_toadmins(rest)
         return None
 
-    @simple_command
-    def admin_adminreload(self):
+    def admin_adminreload(self, rest, nick=None):
         """ Reloads admin list for IRCClient. """
         # Really need to reorganize things, this is getting ridiculous.
         self.admin.admins_load()
         return 'admins loaded.'
 
-    @basic_command
-    def admin_adminrem(self, rest):
+    def admin_adminrem(self, rest, nick=None):
         """ Alias for admin_adminremove """
         return self.admin_adminremove(rest)
 
-    @basic_command
-    def admin_adminremove(self, rest):
+    def admin_adminremove(self, rest, nick=None):
         """ Remove an admin from the handlers list. """
         return self.admin.admins_remove(rest)
 
-    @basic_command
-    def admin_ban(self, rest):
+    def admin_ban(self, rest, nick=None):
         """ Ban a nick. """
 
-        if not rest.strip():
+        if not rest:
             return 'usage: {}ban <nick>'.format(self.admin.cmdchar)
 
         nicks = rest.split(' ')
@@ -682,8 +676,7 @@ class CommandFuncs(object):
             msg.append('unable to ban: {}'.format(', '.join(notbanned)))
         return ', '.join(msg)
 
-    @simple_command
-    def admin_banned(self):
+    def admin_banned(self, rest, nick=None):
         """ list banned. """
         banned = ', '.join(sorted(self.admin.banned))
         if banned:
@@ -691,8 +684,7 @@ class CommandFuncs(object):
         else:
             return 'nobody is banned.'
 
-    @simple_command
-    def admin_banwarns(self):
+    def admin_banwarns(self, rest, nick=None):
         """ list ban warnings. """
 
         banwarns = []
@@ -705,8 +697,7 @@ class CommandFuncs(object):
         else:
             return 'no ban warnings issued.'
 
-    @basic_command
-    def admin_blacklist(self, rest):
+    def admin_blacklist(self, rest, nick=None):
         """ Toggle the blacklist option """
         if rest == '?' or (not rest):
             # current status will be printed at the bottom of this func.
@@ -723,25 +714,20 @@ class CommandFuncs(object):
                 return 'invalid value for blacklist option (true/false).'
         return 'blacklist enabled: {}'.format(self.admin.blacklist)
 
-    @simple_command
-    def admin_channels(self):
+    def admin_channels(self, rest, nick=None):
         """ Return a list of current channels for the bot. """
         return 'current channels: {}'.format(', '.join(self.admin.channels))
 
-    @basic_command
-    def admin_chanmsg(self, rest):
+    def admin_chanmsg(self, rest, nick=None):
         """ Send a msg to all channels pyvalbot is in. """
-        if not rest.strip():
+        if not rest:
             return 'Must give a message to send!'
 
         self.admin.sendmsg_tochans(rest)
         return None
 
-    @basic_command
-    def admin_configget(self, rest):
+    def admin_configget(self, rest, nick=None):
         """ Retrieve value for a config setting. """
-
-        rest = rest.strip()
         if not rest:
             return 'usage: {}configget <option>'.format(self.admin.cmdchar)
 
@@ -757,28 +743,25 @@ class CommandFuncs(object):
         # Value is ok to send to chat.
         return '{}: {}'.format(rest, val)
 
-    @simple_command
-    def admin_configlist(self):
+    def admin_configlist(self, rest, nick=None):
         """ List current config. Filters certain items from chat. """
 
         return self.admin_getattr('admin.config')
 
-    @simple_command
-    def admin_configsave(self):
+    def admin_configsave(self, rest, nick=None):
         """ Save the current config (cmdline options) to disk. """
         saved = self.admin.save_config()
         if saved is None:
             return 'unable to save config.'
-        else:
-            return 'saved {} new config settings.'.format(saved)
 
-    @basic_command
-    def admin_configset(self, rest):
+        return 'saved {} new config settings.'.format(saved)
+
+    def admin_configset(self, rest, nick=None):
         """ Set value for a config setting. """
 
-        usagestr = ('usage: '
-                    '{}configset <option> <value>').format(self.admin.cmdchar)
-        rest = rest.strip()
+        usagestr = 'usage: {}configset <option> <value>'.format(
+            self.admin.cmdchar
+        )
         if not rest:
             return usagestr
 
@@ -807,10 +790,28 @@ class CommandFuncs(object):
         # Failure.
         return 'unable to save: {}: {}'.format(opt, val)
 
-    @basic_command
-    def admin_getattr(self, rest):
+    def admin_deop(self, rest, nick=None):
+        """ Request deop from ChanServ on behalf of the bot. """
+        if not rest:
+            self.admin.op_request(reverse=True)
+            return None
+
+        chan, _, nick = rest.partition(' ')
+        if not chan.startswith('#'):
+            # No channel given, request ops for nick in ##<botnick>
+            nick = chan
+            chan = None
+
+        self.admin.op_request(channel=chan, nick=nick, reverse=True)
+
+    def admin_deopme(self, rest, nick=None):
+        """ Request deop from the bot (if the bot is an op itself) """
+        chan = rest if rest.startswith('#') else None
+        self.admin.op_request(channel=chan, nick=nick, reverse=True)
+
+    def admin_getattr(self, rest, nick=None):
         """ Return value for attribute. """
-        if not rest.strip():
+        if not rest:
             return 'usage: {}getattr <attribute>'.format(self.admin.cmdchar)
 
         parent, attrname, attrval = self.parse_attrstr(rest)
@@ -829,19 +830,16 @@ class CommandFuncs(object):
             attrval = '{} ...truncated'.format(attrval[:250])
         return '{} = {}'.format(rest, attrval)
 
-    @basic_command
-    def admin_id(self, rest):
+    def admin_id(self, rest, nick=None):
         """ Shortcut for admin_identify """
         return self.admin.identify(rest)
 
-    @basic_command
-    def admin_identify(self, rest):
+    def admin_identify(self, rest, nick=None):
         """ Identify with nickserv, expects !identify password """
 
         return self.admin.identify(rest)
 
-    @basic_command
-    def admin_join(self, rest):
+    def admin_join(self, rest, nick=None):
         """ Join a channel as pyval. """
         if ',' in rest:
             # multiple channel names.
@@ -870,8 +868,7 @@ class CommandFuncs(object):
         # (you can look at the log/stdout)
         return None
 
-    @basic_command
-    def admin_limitrate(self, rest):
+    def admin_limitrate(self, rest, nick=None):
         """ Toggle limit_rate """
         if rest == '?' or (not rest):
             # current status will be printed at the bottom of this func.
@@ -888,8 +885,7 @@ class CommandFuncs(object):
                 return 'invalid value for limitrate option (true/false).'
         return 'limitrate enabled: {}'.format(self.admin.limit_rate)
 
-    @basic_command
-    def admin_me(self, rest):
+    def admin_me(self, rest, nick=None):
         """ Perform an irc action, /ME <channel> <text> """
         cmdargs = rest.split()
         if len(cmdargs) < 2:
@@ -903,8 +899,7 @@ class CommandFuncs(object):
         self.admin.do_action(channel, text)
         return None
 
-    @basic_command
-    def admin_msg(self, rest):
+    def admin_msg(self, rest, nick=None):
         """ Send a private msg, expects !msg nick/channel message """
 
         msgparts = rest.split()
@@ -915,8 +910,26 @@ class CommandFuncs(object):
         self.admin.sendmsg(target, msgtext)
         return None
 
-    @basic_command
-    def admin_part(self, rest):
+    def admin_op(self, rest, nick=None):
+        """ Request ops from ChanServ on behalf of the bot. """
+        if not rest:
+            self.admin.op_request()
+            return None
+
+        chan, _, nick = rest.partition(' ')
+        if not chan.startswith('#'):
+            # No channel given, request ops for nick in ##<botnick>
+            nick = chan
+            chan = None
+
+        self.admin.op_request(channel=chan, nick=nick)
+
+    def admin_opme(self, rest, nick=None):
+        """ Request ops from the bot (if the bot is an op itself) """
+        chan = rest if rest.startswith('#') else None
+        self.admin.op_request(channel=chan, nick=nick)
+
+    def admin_part(self, rest, nick=None):
         """ Leave a channel as pyval. """
         if ',' in rest:
             # multichannel
@@ -945,8 +958,7 @@ class CommandFuncs(object):
         # (you can check the log/stdout)
         return None
 
-    @simple_command
-    def admin_partall(self):
+    def admin_partall(self, rest, nick=None):
         """ Part all current channels.
             The only way to re-join is to send a private msg to pyval,
             or shutdown and restart.
@@ -954,21 +966,21 @@ class CommandFuncs(object):
 
         return self.admin_part(','.join(self.admin.channels))
 
-    @basic_command
-    def admin_say(self, rest):
+    def admin_say(self, rest, nick=None):
         """ Send chat message back to person. """
+        if not rest:
+            return None
         log.msg('Saying: {}'.format(rest))
         return rest
 
-    @basic_command
-    def admin_sendline(self, rest):
+    def admin_sendline(self, rest, nick=None):
         """ Send raw line as pyval. """
-        log.msg('Sending line: {}'.format(rest))
-        self.admin.sendLine(rest)
+        if rest:
+            log.msg('Sending line: {}'.format(rest))
+            self.admin.sendLine(rest)
         return None
 
-    @basic_command
-    def admin_setattr(self, rest):
+    def admin_setattr(self, rest, nick=None):
         """ Set an attribute to self or children of self by string.
             Example:
                 self.admin_setattr('admin.blacklist True')
@@ -978,15 +990,14 @@ class CommandFuncs(object):
             ...special handling is needed for False and other values.
 
         """
-
-        if not rest.strip():
-            return 'usage: setattr <attribute> <val>'
+        usagestr = 'usage: setattr <attribute> <val>'
+        if not rest:
+            return usagestr
 
         # Parse args
-        cmdargs = rest.split()
-        if len(cmdargs) != 2:
-            return 'incorrect number of arguments for setattr.'
-        attrstr, valstr = cmdargs
+        attrstr, _, valstr = rest.partition(' ')
+        if not valstr:
+            return 'No arguments, {}'.format(usagestr)
 
         # Find old value, final attrname, and parent of old value.
         parent, oldname, oldval = self.parse_attrstr(attrstr)
@@ -1013,23 +1024,17 @@ class CommandFuncs(object):
             newval = '{} ...truncated'.format(newval[:250])
         return '{} = {}'.format(attrstr, newval)
 
-    @basic_command
-    def admin_shutdown(self, rest):
+    def admin_shutdown(self, rest, nick=None):
         """ Shutdown the bot. """
-        userargs = rest.strip()
-        default = 'No message given.'
-        if userargs:
-            quitmsg = rest
-        else:
-            quitmsg = 'Shutting down...'
-        finalmsg = 'Shutting down: {}'.format(quitmsg if userargs else default)
+        finalmsg = 'Shutting down: {}'.format(rest if rest else 'No reason.')
         log.msg(finalmsg)
+
+        quitmsg = rest or 'Shutting down...'
         self.admin.quit(message=quitmsg)
         # Unreachable code.
         return finalmsg
 
-    @simple_command
-    def admin_stats(self):
+    def admin_stats(self, rest, nick=None):
         """ Return simple stats info. """
         uptime = timefromsecs(self.admin.get_uptime())
         statslst = (
@@ -1040,8 +1045,23 @@ class CommandFuncs(object):
         )
         return ', '.join(statslst)
 
-    @basic_command
-    def admin_unban(self, rest):
+    def admin_topic(self, rest, nick=None):
+        """ Set the topic for a channel.
+            Defaults to bot channel and default topic.
+        """
+        if not rest:
+            self.admin.set_topic()
+            return None
+
+        chan, _, msg = rest.partition(' ')
+        if not chan.startswith('#'):
+            # No channel specified
+            chan = None
+            msg = rest
+
+        self.admin.set_topic(topic=msg, channel=chan)
+
+    def admin_unban(self, rest, nick=None):
         """ Unban a nick. """
         if not rest.strip():
             return 'usage: {}unban <nick>'.format(self.admin.cmdchar)
@@ -1064,7 +1084,9 @@ class CommandFuncs(object):
 
     def cmd_help(self, rest, nick=None):
         """ Returns a short help string. """
-        return self.get_help(role='user', cmdname=rest, usernick=nick)
+        self.admin.sendmsg(
+            nick,
+            self.get_help(role='user', cmdname=rest, usernick=nick))
 
     def cmd_py(self, rest, nick=None):
         """ Shortcut for cmd_python """
@@ -1075,7 +1097,7 @@ class CommandFuncs(object):
             Restrictions are set. No os module, no nested eval() or exec().
         """
 
-        if not rest.strip():
+        if not rest:
             # No input.
             return None
 
@@ -1171,12 +1193,12 @@ class CommandFuncs(object):
             # Don't reply to this valid msg.
             return None
         else:
-            return ' '.join(['try {cc}help,'
-                             '{cc}py help,'
-                             'or {cc}help py']).format(cc=self.admin.cmdchar)
+            return ' '.join([
+                'try {cc}help,'
+                '{cc}py help,'
+                'or {cc}help py']).format(cc=self.admin.cmdchar)
 
-    @basic_command
-    def _cmd_saylater(self, rest):
+    def _cmd_saylater(self, rest, nick=None):
         """ Delayed response... DISABLED"""
         when, sep, msg = rest.partition(' ')
         try:
@@ -1192,22 +1214,19 @@ class CommandFuncs(object):
         # maybeDeferred in pyvalbot.PyValIRCProtocol.privmsg.
         return d
 
-    @simple_command
-    def cmd_time(self):
+    def cmd_time(self, rest, nick=None):
         """ Retrieve current date and time. """
 
         return humantime(datetime.now())
 
-    @simple_command
-    def cmd_uptime(self):
+    def cmd_uptime(self, rest, nick=None):
         """ Return uptime, and starttime """
         uptime = timefromsecs(self.admin.get_uptime())
         s = 'start: {}, up: {}'.format(humantime(self.admin.starttime),
                                        uptime)
         return s
 
-    @simple_command
-    def cmd_version(self):
+    def cmd_version(self, rest, nick=None):
         """ Return pyval version, and sys.version. """
         pyvalver = '{}: {}'.format(NAME, VERSION)
         pyver = 'Python: {}'.format(sysversion.split()[0])

@@ -68,6 +68,14 @@
         "args": "<option> <value>",
         "desc": "Set a config option's value. String values only for now. Remove options by passing - as the value."
         },
+    "deop": {
+        "args": "[channel] [nick]",
+        "desc": "Request deop from ChanServ. Default channel is ##<botnick>. Default nick is the bot."
+    },
+    "deopme": {
+        "args": "[channel]",
+        "desc": "Shortcut to `deop [channel] <yournick>"
+    },
     "getattr": {
         "args": "<attribute>",
         "desc": "Retrieve the value of a pyval CommandFuncs  attribute. (ex: admins.channels)"
@@ -96,6 +104,14 @@
         "args": "<target> <message>",
         "desc": "Send a message to a nick or channel as pyvalbot."
         },
+    "op": {
+        "args": "[channel] [nick]",
+        "desc": "Request ops from ChanServ. Default channel is ##<botnick>. Default nick is the bot."
+    },
+    "opme": {
+        "args": "[channel]",
+        "desc": "Shortcut to `op [channel] <yournick>"
+    },
     "part": {
         "args": "<channels>",
         "desc": "Part/Leave a channel or multiple channels (using a comma-separated list)"
@@ -123,6 +139,10 @@
     "stats": {
         "args": null,
         "desc": "Show handled-count (number of commands handled), and uptime (time since startup)"
+        },
+    "topic": {
+        "args": "[<channel>] <message>",
+        "desc": "Set the topic for a channel. Defaults to the bot's channel and default message."
         },
     "unban": {
         "args": "<nick>",
