@@ -305,17 +305,15 @@ class PyValIRCProtocol(irc.IRCClient):
         # Reset the delay counts on the global factory.
         factory.resetDelay()
 
-    def connectionLost(self, reason):
+    def connectionLost(self, reason=protocol.connectionDone):
         """ Connection to the server was lost.
             Log it, and fire the main deferred with an errback().
+            Arguments:
+                reason  : A Failure() instance
         """
-        if hasattr(reason, 'getErrorMessage'):
-            # Failure() instance.
-            reason = reason.getErrorMessage()
+        reasonmsg = ': {}'.format(reason.getErrorMessage()) if reason else '.'
+        log.msg('Connection Lost{}'.format(reasonmsg))
 
-        log.msg(
-            'Connection Lost{}'.format(
-                ': {}'.format(reason) if reason else '.'))
         # Fire the main deferred with an error (the disconnect reason).
         self.deferred.errback(reason)
 
