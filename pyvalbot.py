@@ -76,6 +76,7 @@
 
 # System/General stuff
 from datetime import datetime
+from getpass import getpass, GetPassWarning
 from hashlib import md5
 from os import getpid
 import os.path
@@ -130,14 +131,15 @@ USAGESTR = """{versionstr}
         -h,--help                  : Show this message.
         -i,--ips                   : Print all messages to log,
                                      include ip addresses.
-        -L pw,--loginpw pw         : Password  for the irc server,
-                                     sent with /PASS <pw>.
+        -L,--loginpw               : Prompt for the IRC server password before
+                                     connecting, sent with /PASS <pw>.
         -l,--logfile               : Use log file instead of stderr/stdout.
         -m,--monitor               : Print all messages to log.
         -n <nick>,--nick <nick>    : Choose what NICK to use for this bot.
-        -P pw,--password pw        : Specify a password for the IDENTIFY
-                                     command. The bot will identify with
-                                     NickServ on connection.
+        -P,--password              : Prompt for NickServ password before
+                                     connecting.
+                                     The bot will identify with NickServ on
+                                     connection.
         -p port,--port port        : Port number for the irc server.
                                      Defaults to: 6667
         -s server,--server server  : Name/Domain for the irc server.
@@ -185,18 +187,22 @@ class PyValIRCProtocol(irc.IRCClient):
             nick=self.admin.nickname)
 
         # parse username/password config where 'user:password' is used.
-        pw = self.get_config('loginpw', None)
-        if pw:
-            if ':' in pw:
-                username, pw = pw.split(':')
-            else:
-                username = self.get_config('username', NAME)
+        if self.get_argd('--loginpw'):
+            pw = self.get_password(pwtype='the IRC server')
+            if pw:
+                if ':' in pw:
+                    username, pw = pw.split(':')
+                else:
+                    username = self.get_config('username', NAME)
         else:
+            # No login password, possibly mixed in with user name.
+            pw = None
             username = self.get_config('username', None)
             if username:
                 if ':' in username:
                     username, pw = username.split(':')
             else:
+                # Program name as user name (no login though)
                 username = NAME
 
         self.admin.username = username
@@ -205,7 +211,10 @@ class PyValIRCProtocol(irc.IRCClient):
         self.nickname = self.admin.nickname
         self.username = self.admin.username
         # The password attributes are deleted as soon as they are used.
-        self.nickservpw = self.get_config('password', default=None)
+        if self.get_argd('--password'):
+            self.nickservpw = self.get_password(pwtype='NickServ') or None
+        else:
+            self.nickservpw = None
 
         self.erroneousNickFallback = '{}_'.format(self.nickname)
         # Settings for client/version replies.
@@ -216,10 +225,11 @@ class PyValIRCProtocol(irc.IRCClient):
         self.channels = self.parse_join_channels(self.get_config('channels'))
 
         # Class to handle messages and commands.
-        self.commandhandler = CommandHandler(defer_=defer,
-                                             reactor_=reactor,
-                                             task_=task,
-                                             adminhandler=self.admin)
+        self.commandhandler = CommandHandler(
+            defer_=defer,
+            reactor_=reactor,
+            task_=task,
+            adminhandler=self.admin)
 
         # Save cmdline args to config.
         if self.get_config('autosave'):
@@ -320,8 +330,10 @@ class PyValIRCProtocol(irc.IRCClient):
     def get_argd(self, argname, default=None):
         """ Safely retrieves a command-line arg from self.argd. """
         if not self.argd:
-            log.msg('Something went wrong, self.argd was None!\n'
-                    '    Setting to MAIN_ARGD.')
+            log.msg('\n'.join((
+                'Something went wrong, self.argd was None!',
+                '    Setting to MAIN_ARGD.'
+            )))
             self.argd = MAIN_ARGD
 
         if self.argd:
@@ -354,6 +366,22 @@ class PyValIRCProtocol(irc.IRCClient):
         if not val:
             val = self.admin.config.get(option, default=default)
         return val
+
+    def get_password(self, pwtype=None):
+        """ Get a password using getpass. """
+        if pwtype:
+            prompt = 'Enter your password for {}: '.format(pwtype)
+        else:
+            prompt = 'Enter your password: '
+        try:
+            pw = getpass(prompt).strip()
+        except GetPassWarning:
+            log.msg('Aborting because of unsafe password entry.')
+            raise ValueError('Unsafe password entry.')
+        if not pw:
+            # User cancelled.
+            raise ValueError('User cancelled.')
+        return pw
 
     def irc_PING(self, prefix, params):
         """ Called when someone has pinged the bot,
