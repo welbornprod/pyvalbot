@@ -15,7 +15,7 @@ import json
 import os
 import re
 from sys import version as sysversion
-import urllib
+import urllib2
 
 from easysettings import EasySettings
 from twisted.python import log
@@ -39,9 +39,6 @@ bool_values = list(true_values)
 bool_values.extend(false_values)
 boolpat = re.compile('\[({})\]'.format('|'.join(bool_values)), re.IGNORECASE)
 intpat = re.compile('\[(\d+)\]')
-parse_true = lambda s: s.lower() in true_values
-parse_false = lambda s: s.lower() in false_values
-parse_bool = lambda s: parse_true(s[1:-1]) if boolpat.match(s) else None
 
 
 def block_dict_val(data, blockedlst, value=None):
@@ -104,6 +101,18 @@ def load_json_object(filename):
     return jsonobj
 
 
+def parse_bool(s):
+    return parse_true(s[1:-1]) if boolpat.match(s) else None
+
+
+def parse_false(s):
+    return s.lower() in false_values
+
+
+def parse_true(s):
+    return s.lower() in true_values
+
+
 def pasteit(data):
     """ Submit a paste to welbornprod.com/paste ...
         data should be a dict with at least:
@@ -117,27 +126,40 @@ def pasteit(data):
          'onhold': True,
          }
     """
-    pasteurl = 'http://welbornprod.com/paste/api/submit'
+    pasteurl = 'https://welbornprod.com/paste/api/submit'
     try:
-        newdata = urllib.urlencode(data)
+        newdata = json.dumps(data)
     except Exception as exenc:
         log.msg('Unable to encode paste data: {}\n{}'.format(data, exenc))
         return None
+
+    req = urllib2.Request(
+        pasteurl,
+        data=newdata.encode('utf-8'),
+        headers={
+            'User-Agent': '{} v. {}'.format(NAME, VERSION),
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Encoding': 'utf-8'
+        })
     try:
-        con = urllib.urlopen(pasteurl, data=newdata)
+        con = urllib2.urlopen(req)
     except Exception as exopen:
         log.msg('Unable to open paste url: {}\n{}'.format(pasteurl, exopen))
         return None
     try:
         resp = con.read()
     except Exception as exread:
-        log.msg('Unable to read paste response from '
-                '{}\n{}'.format(pasteurl, exread))
+        log.msg(
+            'Unable to read paste response from {}\n{}'.format(
+                pasteurl,
+                exread))
         return None
     try:
         respdata = json.loads(resp)
     except Exception as exjson:
-        log.msg('Unable to decode JSON from {}\n{}'.format(pasteurl, exjson))
+        log.error('Unable to decode JSON from {}\n{}'.format(
+            pasteurl,
+            exjson))
         return None
 
     status = respdata.get('status', 'error')
@@ -156,7 +178,7 @@ def pasteit(data):
     # Good response.
     suburl = respdata.get('url', None)
     if suburl:
-        finalurl = 'http://welbornprod.com{}'.format(suburl)
+        finalurl = 'https://welbornprod.com{}'.format(suburl)
         return finalurl
 
     # No url found to respond with.
@@ -355,7 +377,9 @@ class AdminHandler(object):
             with open(BANFILE) as fread:
                 banned = [l.strip('\n') for l in fread.readlines()]
         except (IOError, OSError) as exos:
-            log.msg('Unable to load banned file: {}\n{}'.format(BANFILE, exos))
+            log.msg('Unable to load banned file: {}\n{}'.format(
+                BANFILE,
+                exos))
         return banned
 
     def ban_remove(self, nicklst):
@@ -387,7 +411,9 @@ class AdminHandler(object):
                 f.write('\n'.join(self.banned))
                 return True
         except (IOError, OSError) as exos:
-            log.msg('Unable to save banned file: {}\n{}'.format(BANFILE, exos))
+            log.msg('Unable to save banned file: {}\n{}'.format(
+                BANFILE,
+                exos))
         return False
 
     def get_uptime(self):
@@ -1271,7 +1297,7 @@ class CommandFuncs(object):
                 cmdname = cmdname.replace('"', '').replace("'", '')
             # Convert 'help ' into 'help'
             cmdname = cmdname.strip()
-            # Convert 'help ' into None so it can be interpreted as plain help.
+            # Convert 'help ' into None so it can be interpreted as plain help
             if cmdname == 'help':
                 cmdname = None
             else:
@@ -1379,7 +1405,8 @@ class CommandFuncs(object):
         }
 
         # Add extra args for the unittests..
-        if author.startswith('<pyvaltest>') or query.startswith('<pyvaltest>'):
+        if (author.startswith('<pyvaltest>') or
+                query.startswith('<pyvaltest>')):
             pastedata['disabled'] = True
             pastedata['author'] = '<pyvaltest> {}'.format(author)
 
