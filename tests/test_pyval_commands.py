@@ -10,7 +10,7 @@
 """
 
 import unittest
-
+import random
 from pyval_commands import AdminHandler, CommandHandler
 
 
@@ -43,6 +43,15 @@ class TestCommandFuncs(unittest.TestCase):
         This includes AdminHandler, CommandHandler, and CommandFuncs.
     """
 
+    def cmd_str(self, cmd):
+        """ Ensure a command starts with the command character. """
+        if not cmd.startswith(self.cmdhandler.admin.cmdchar):
+            return ''.join((
+                self.cmdhandler.admin.cmdchar,
+                cmd
+            ))
+        return cmd
+
     def fail_nocmd(self, nocmd):
         """ Fail due to NoCommand. Pass a NoCommand in. """
 
@@ -58,8 +67,8 @@ class TestCommandFuncs(unittest.TestCase):
         cmdfunc = cmdhandler.parse_data(usernick, '#channel', userinput)
         if cmdfunc:
             return cmdfunc
-        else:
-            return NoCommand(userinput)
+
+        return NoCommand(userinput)
 
     def get_usercmd_result(self, cmdhandler, userinput, asadmin=False):
         """ Receives input like it came from chat, returns cmd output. """
@@ -76,6 +85,13 @@ class TestCommandFuncs(unittest.TestCase):
 
         return cmdfunc(args, nick=usernick)
 
+    def random_paste_str(self):
+        """ Return a random string of characters that can be appended
+            to paste data, so that the server doesn't return an
+            error ('same as last paste').
+        """
+        return ''.join(chr(random.randint(97, 122)) for i in range(5))
+
     def setUp(self):
         """ Setup each test with an admin/command handler """
         global ADMINHELP
@@ -85,17 +101,18 @@ class TestCommandFuncs(unittest.TestCase):
             self.adminhandler = AdminHandler()
             ADMINHELP = self.adminhandler.help_info
         self.adminhandler.nickname = 'testnick'
-        self.adminhandler.admins.append('testadmin')
+        self.adminhandler.admins.add('testadmin')
         self.cmdhandler = CommandHandler(adminhandler=self.adminhandler)
 
     def test_admin_getattr(self):
-        """ admin command !getattr works """
+        """ admin command getattr works """
 
         self.cmdhandler.admin.blacklist = True
 
-        cmdresult = self.get_usercmd_result(self.cmdhandler,
-                                            '!getattr admin.blacklist',
-                                            asadmin=True)
+        cmdresult = self.get_usercmd_result(
+            self.cmdhandler,
+            self.cmd_str('getattr admin.blacklist'),
+            asadmin=True)
         if isinstance(cmdresult, NoCommand):
             self.fail_nocmd(cmdresult)
 
@@ -103,10 +120,10 @@ class TestCommandFuncs(unittest.TestCase):
                          msg='Failed to get attribute')
 
     def test_admin_setattr(self):
-        """ admin command !setattr works """
+        """ admin command setattr works """
 
         self.cmdhandler.admin.blacklist = False
-        cmd = '!setattr'
+        cmd = self.cmd_str('setattr')
         args = 'admin.blacklist True'
         userinput = '{} {}'.format(cmd, args)
         setattrfunc = self.get_cmdfunc(
@@ -131,7 +148,10 @@ class TestCommandFuncs(unittest.TestCase):
         noneresult = pastebin('', '')
         self.assertIsNone(noneresult, msg='empty arg should produce None')
 
-        pastebinurl = pastebin('<pyvaltest> query', '<pyvaltest> valid string')
+        pastebinurl = pastebin(
+            '<pyvaltest> query',
+            '<pyvaltest> valid string ({})'.format(self.random_paste_str())
+        )
         self.assertIsNotNone(
             pastebinurl,
             msg=('print_topastebin() failed to give url: \'{}\''.format(
