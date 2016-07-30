@@ -85,7 +85,8 @@ def timefromsecs(secs, label=True):
 
 def get_args(s, arglist):
     """ Grab arguments from the start of a string,
-        trim them from the string and return a dict of {argname: (arg found?)}.
+        trim them from the string and return a dict of:
+            {argname: (arg found?)}
         This only grabs args from the beginning of the string.
         So things like this can be used: "--paste print('--help')"
 
@@ -98,7 +99,10 @@ def get_args(s, arglist):
             >>> get_args('-r testing this', (('-r', '--reverse'),)
                 ({'--reverse': True}, 'testing this')
 
-            argdict, s = get_args('-r blah.', (('-r', '--re'), ('-p', '--pr')))
+            argdict, s = get_args(
+                '-r blah.',
+                (('-r', '--re'),
+                ('-p', '--pr')))
             assert argdict == {'--re': True, '--pr': False}
             assert s == 'blah.'
     """
@@ -106,11 +110,13 @@ def get_args(s, arglist):
         return {}, s
     # Map that will convert a short option into a long one.
     flagmap = {opt1: opt2 for opt1, opt2 in arglist}
-    # Build a base dict, it holds all long options with default value of False.
+    # Build a base dict, holds all long options with default value of False.
     argdict = {opt2: False for _, opt2 in arglist}
-    # Build a single regex pattern to match any arg at the start of the string.
-    formatopt = lambda opts: '((^{})|(^{}))'.format(opts[0], opts[1])
-    argpat = re.compile('|'.join(formatopt(opts) for opts in arglist))
+    # Build a regex pattern to match any arg at the start of the string.
+    argpat = re.compile('|'.join(
+        '((^{})|(^{}))'.format(opts[0], opts[1])
+        for opts in arglist
+    ))
     # Find any arg that matches. Save it, strip it, and try another.
     flagmatch = argpat.match(s)
     while flagmatch:
