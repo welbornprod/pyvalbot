@@ -8,7 +8,7 @@
 import re
 
 NAME = 'PyVal'
-VERSION = '1.2.0'
+VERSION = '1.2.1'
 VERSIONSTR = '{} v. {}'.format(NAME, VERSION)
 
 

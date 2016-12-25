@@ -494,7 +494,7 @@ class ExecBox(object):
                     x = x * 5
                     pipesend.send(x)
 
-                result = timed_call(myfunc, args=[25])
+                result = timed_call(myfunc, args=[5])
                 # result is now: 25
 
             Arguments:

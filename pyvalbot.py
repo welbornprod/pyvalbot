@@ -19,8 +19,8 @@
 
     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -55,8 +55,8 @@
                               which executes it. If the return value is a
                               string, the string is sent as a privmsg to
                               wherever the original command came from.
-                              Either a channel, or a user. Functions may return
-                              None if no response is needed.
+                              Either a channel, or a user. Functions may
+                              return None if no response is needed.
 
     Original Twisted basic bot code borrowed from habnabit.
         Original ircbot.py from habnabit:
@@ -70,7 +70,7 @@
 
     Sandboxing is done by pypy-sandbox (pypy.org)
 
-    -Christopher Welborn 2013-2014
+    -Christopher Welborn 2013-2016
 """
 
 
@@ -512,23 +512,24 @@ class PyValIRCProtocol(irc.IRCClient):
 
     def noticed(self, user, channel, message):
         """ Called when a NOTICE is sent to the bot or channel. """
-        # If data is already monitored, printing again will only cause clutter.
+        # If data is already monitored, printing again will cause clutter.
         # So skip this part if monitordata is set.
-        if not self.admin.monitordata:
-            if channel == self.admin.nickname:
-                # Private notice.
-                # Check for ZNC autoop challenge.
-                if '!ZNCAO CHALLENGE' in message:
-                    self.respond_znc_challenge(user, message)
-                noticefmt = 'NOTICE from {}: {}'
-                log.msg(noticefmt.format(user, message))
-                # Send private notice to admins.
-                adminmsg = 'NOTICE: {}'.format(message)
-                self.admin.sendmsg_toadmins(adminmsg, fromnick=user)
-            else:
-                # Channel/server notice.
-                noticefmt = 'NOTICE from {} in {}: {}'
-                log.msg(noticefmt.format(user, channel, message))
+        if self.admin.monitordata:
+            return None
+        if channel == self.admin.nickname:
+            # Private notice.
+            # Check for ZNC autoop challenge.
+            if '!ZNCAO CHALLENGE' in message:
+                self.respond_znc_challenge(user, message)
+            noticefmt = 'NOTICE from {}: {}'
+            log.msg(noticefmt.format(user, message))
+            # Send private notice to admins.
+            adminmsg = 'NOTICE: {}'.format(message)
+            self.admin.sendmsg_toadmins(adminmsg, fromnick=user)
+        else:
+            # Channel/server notice.
+            noticefmt = 'NOTICE from {} in {}: {}'
+            log.msg(noticefmt.format(user, channel, message))
 
     def parse_comma_args(self, s):
         """ Parses comma-separated strings, returns a list.
@@ -605,7 +606,7 @@ class PyValIRCProtocol(irc.IRCClient):
             # save seconds since last response.
             respondtime = (datetime.now() - self.admin.last_handle)
             respondsecs = respondtime.total_seconds()
-            # If this user has been ban warned, check their last response time.
+            # If this user has been ban warned, check their last response time
             if nick in self.admin.banned_warned.keys():
                 lasttime = self.admin.banned_warned[nick]['last']
                 usersecs = (datetime.now() - lasttime).total_seconds()
@@ -631,8 +632,8 @@ class PyValIRCProtocol(irc.IRCClient):
                 return None
 
             # Handle message parsing and commands.
-            # If the message triggers a command, then a function is returned to
-            # handle it. If there is no function returned, then just return.
+            # If the message triggers a command, then a function is returned
+            # to handle it. If there is no function, then just return.
             func = self.commandhandler.parse_data(user, channel, message)
 
             # Nothing returned from commandhandler, no response is needed.
@@ -919,7 +920,7 @@ def main(reactor, serverstr, argd):
         factory = PyValIRCFactory(argd=argd, serverstr=serverstr)
         # Connect the factory to the specified host/port.
         d = endpoint.connect(factory)
-        # Add the protocol's main deferred, which can be fired on fatal errors.
+        # Add protocol's main deferred, which can be fired on fatal errors.
         d.addCallback(lambda protocol: protocol.deferred)
         return d
     except Exception as ex:
