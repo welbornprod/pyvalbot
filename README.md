@@ -9,11 +9,18 @@ Requirements:
 - **python-pypy.sandbox** or **python-pypy.translator.sandbox**
  package found in debian/ubuntu distros.
 
- this package provides the prebuilt `pypy-sandbox` executable
+ This package provides the prebuilt `pypy-sandbox` executable
  which is used to by pyval to run code safely.
 
  pyval looks for `pypy-sandbox` in `/usr/bin`.
 
+ **Note:** The last release for this package was in Debian `jessie` and
+ Ubuntu-based `16.04`. It is no longer maintained.
+
+ It has to be compiled from source. The instructions are in the
+ [pypy sandbox docs](http://doc.pypy.org/en/latest/sandbox.html). I recommend
+ not even trying to compile this without at least 8GB of RAM, and a working
+ `pypy` executable.
 
 - **Twisted** python module.
 
